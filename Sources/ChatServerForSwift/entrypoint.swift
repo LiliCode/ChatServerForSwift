@@ -2,6 +2,9 @@ import Vapor
 import Logging
 import NIOCore
 import NIOPosix
+import Fluent
+import FluentSQLiteDriver
+import Redis
 
 @main
 enum Entrypoint {
@@ -19,7 +22,28 @@ enum Entrypoint {
         // app.logger.debug("Tried to install SwiftNIO's EventLoopGroup as Swift's global concurrency executor", metadata: ["success": .stringConvertible(executorTakeoverSuccess)])
         
         do {
-            try await configure(app)
+            // 配置 Redis
+            app.redis.configuration = try RedisConfiguration(hostname: "localhost")
+
+            // 初始化数据库
+            app.databases.use(.sqlite(.file("chat_server_db.sqlite")), as: .sqlite)
+            
+            // 添加迁移
+            app.migrations.add(CreateUser())
+            app.migrations.add(CreateOrganization())
+            
+            // 运行迁移
+            try await app.autoMigrate()
+            
+            // 配置 WebSocket 连接管理器
+            await WebSocketConnectionManager.shared.configure(messageCache: RedisMessageCache(redis: app.redis))
+            
+            // 初始化默认组织
+            try await initializeDefaultOrganizations(on: app)
+
+            // register routes
+            try routes(app)
+            
             try await app.execute()
         } catch {
             app.logger.report(error: error)
@@ -27,5 +51,28 @@ enum Entrypoint {
             throw error
         }
         try await app.asyncShutdown()
+    }
+}
+
+/// 初始化默认组织
+private func initializeDefaultOrganizations(on app: Application) async throws {
+    let repository = FluentOrganizationRepository(db: app.db)
+    
+    // 检查是否已有组织
+    guard try await !repository.existsByCode("ORG001") else {
+        return
+    }
+    
+    app.logger.info("创建默认组织...")
+    
+    let defaultOrganizations = [
+        (code: "ORG001", name: "默认组织"),
+        (code: "ORG002", name: "测试组织"),
+        (code: "ORG003", name: "开发组织")
+    ]
+    
+    for org in defaultOrganizations {
+        _ = try await repository.create(code: org.code, name: org.name)
+        app.logger.info("组织码: \(org.code) - \(org.name)")
     }
 }

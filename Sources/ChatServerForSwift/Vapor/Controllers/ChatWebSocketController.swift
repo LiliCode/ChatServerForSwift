@@ -1,10 +1,23 @@
 import Vapor
-import Fluent
-import Foundation
 import NIOWebSocket
+import Foundation
 
-/// 聊天 WebSocket 控制器
+/// WebSocket 聊天控制器
 struct ChatWebSocketController: RouteCollection {
+    private let sendMessage: SendMessage
+    private let processReceipt: ProcessReceipt
+    private let connectionManager: WebSocketConnectionManager
+    
+    init(
+        sendMessage: SendMessage,
+        processReceipt: ProcessReceipt,
+        connectionManager: WebSocketConnectionManager
+    ) {
+        self.sendMessage = sendMessage
+        self.processReceipt = processReceipt
+        self.connectionManager = connectionManager
+    }
+    
     func boot(routes: any RoutesBuilder) throws {
         routes.webSocket("chat", onUpgrade: handleWebSocket)
     }
@@ -18,20 +31,14 @@ struct ChatWebSocketController: RouteCollection {
             return
         }
         
-        // 验证用户是否存在
-        guard let user = try? await User.find(userID, on: req.db) else {
-            await ws.closeWithReason(code: .policyViolation, reason: "用户不存在")
-            return
-        }
-        
-        req.logger.info("用户 \(user.username) (\(userID)) 连接到 WebSocket")
+        req.logger.info("用户 \(userID) 连接到 WebSocket")
         
         // 添加到连接管理器
-        await ChatWebSocketManager.shared.addConnection(userID: userID, socket: ws)
+        await connectionManager.addConnection(userID: userID, socket: ws)
         
         // 推送离线消息
         do {
-            try await ChatWebSocketManager.shared.pushOfflineMessages(to: userID, on: req)
+            try await connectionManager.pushOfflineMessages(to: userID)
         } catch {
             req.logger.error("推送离线消息失败: \(error)")
         }
@@ -44,8 +51,8 @@ struct ChatWebSocketController: RouteCollection {
         // 处理关闭
         ws.onClose.whenComplete { _ in
             Task {
-                await ChatWebSocketManager.shared.removeConnection(userID: userID)
-                req.logger.info("用户 \(user.username) (\(userID)) 断开 WebSocket 连接")
+                await connectionManager.removeConnection(userID: userID)
+                req.logger.info("用户 \(userID) 断开 WebSocket 连接")
             }
         }
     }
@@ -89,59 +96,45 @@ struct ChatWebSocketController: RouteCollection {
             return
         }
         
-        // 验证接收者是否存在
-        guard (try? await User.find(toUserID, on: req.db)) != nil else {
-            req.logger.warning("接收者不存在: \(toUserID)")
-            return
-        }
-        
-        // 构建转发消息
-        var forwardMessage = pushMessage
-        // 将 UUID 转换为 Int64（取前8字节）
-        let fromIDValue = uuidToInt64(fromUserID)
-        forwardMessage.from = fromIDValue
-        forwardMessage.timestamp = Int64(Date().timeIntervalSince1970 * 1000)
-        
-        // 发送给接收者
-        try await ChatWebSocketManager.shared.sendMessage(
-            to: toUserID,
-            message: forwardMessage,
-            on: req
+        // 构建输入
+        let input = SendMessageInput(
+            fromUserID: fromUserID,
+            toUserID: toUserID,
+            content: pushMessage.payload,
+            messageID: pushMessage.hash
         )
+        
+        // 执行发送消息用例
+        try await sendMessage.execute(input)
         
         req.logger.info("消息从 \(fromUserID) 转发到 \(toUserID), msgId: \(pushMessage.hash)")
     }
     
     /// 处理消息回执
     private func handleReceipt(pushMessage: PushMessage, userID: UUID, req: Request) async throws {
-        // 从 payload 中解析回执信息
-        // 回执消息包含已确认的消息 hash
-        let messageHash = pushMessage.hash
-        
-        // 删除对应的离线消息
-        try await ChatWebSocketManager.shared.removeConfirmedMessage(
+        let input = MessageReceiptInput(
             userID: userID,
-            messageHash: messageHash,
-            on: req
+            messageID: pushMessage.hash
         )
         
-        req.logger.info("用户 \(userID) 确认收到消息: \(messageHash)")
+        try await processReceipt.execute(input)
+        
+        req.logger.info("用户 \(userID) 确认收到消息: \(pushMessage.hash)")
     }
 }
 
-// MARK: - 扩展
+// MARK: - WebSocket 扩展
 
 extension WebSocket {
     /// 异步关闭并发送原因
     func closeWithReason(code: WebSocketErrorCode, reason: String) async {
-        // 先发送关闭原因文本消息，再关闭连接
         try? await send(reason)
         try? await close(code: code)
     }
 }
 
-/// 将 UUID 转换为 Int64
-/// 取 UUID 的前 8 字节转换为 Int64
+// MARK: - UUID 转换工具
+
 func uuidToInt64(_ uuid: UUID) -> Int64 {
     let uuidBytes = withUnsafeBytes(of: uuid.uuid) { Array($0) }
     let first8Bytes = Array(uuidBytes[0..<8])
@@ -150,11 +143,8 @@ func uuidToInt64(_ uuid: UUID) -> Int64 {
     }
 }
 
-/// 将 Int64 转换为 UUID
-/// 将 Int64 作为前 8 字节，后 8 字节补 0
 func int64ToUUID(_ value: Int64) -> UUID? {
     var bytes = withUnsafeBytes(of: value) { Array($0) }
-    // 补齐 16 字节
     bytes.append(contentsOf: [UInt8](repeating: 0, count: 8))
     return UUID(uuid: (bytes[0], bytes[1], bytes[2], bytes[3], bytes[4], bytes[5], bytes[6], bytes[7],
                        bytes[8], bytes[9], bytes[10], bytes[11], bytes[12], bytes[13], bytes[14], bytes[15]))

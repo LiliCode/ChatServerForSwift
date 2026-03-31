@@ -1,19 +1,16 @@
 import Vapor
 import Fluent
 
-/// 组织表
-final class Organization: Model, Content, @unchecked Sendable {
+/// Fluent 组织模型
+final class OrganizationFluentModel: Model, Content, @unchecked Sendable {
     static let schema = "organizations"
     
-    /// 自增ID
     @ID(custom: "uid", generatedBy: .database)
     var id: Int?
     
-    /// 组织码
     @Field(key: "code")
     var code: String
     
-    /// 组织名称
     @Field(key: "name")
     var name: String
     
@@ -23,5 +20,17 @@ final class Organization: Model, Content, @unchecked Sendable {
         self.id = id
         self.code = code
         self.name = name
+    }
+}
+
+// MARK: - 转换为领域实体
+
+extension OrganizationFluentModel {
+    func toDomain() -> Organization {
+        Organization(
+            id: id!,
+            code: code,
+            name: name
+        )
     }
 }
