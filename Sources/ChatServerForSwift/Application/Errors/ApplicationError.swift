@@ -1,5 +1,4 @@
 import Foundation
-import Vapor
 
 /// 应用层错误
 public enum ApplicationError: Error, Sendable {
@@ -28,32 +27,5 @@ public enum ApplicationError: Error, Sendable {
         case .userOffline:
             return "用户离线"
         }
-    }
-}
-
-// MARK: - AbortError 协议实现
-
-extension ApplicationError: AbortError {
-    public var status: HTTPResponseStatus {
-        switch self {
-        case .validationError:
-            return .badRequest
-        case .userNotFound:
-            return .notFound
-        case .organizationNotFound:
-            return .badRequest
-        case .usernameAlreadyExists:
-            return .conflict
-        case .invalidCredentials:
-            return .unauthorized
-        case .invalidOldPassword:
-            return .badRequest
-        case .userOffline:
-            return .badRequest
-        }
-    }
-    
-    public var reason: String {
-        return message
     }
 }

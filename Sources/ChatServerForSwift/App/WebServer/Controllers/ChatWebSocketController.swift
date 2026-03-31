@@ -68,7 +68,7 @@ struct ChatWebSocketController: RouteCollection {
         
         do {
             // 解析消息
-            let pushMessage = try PushMessage(serializedBytes: messageData)
+			let pushMessage = try PushMessage(serializedBytes: messageData)
             
             // 根据命令处理
             switch pushMessage.cmd {
@@ -81,7 +81,6 @@ struct ChatWebSocketController: RouteCollection {
             default:
                 req.logger.warning("收到未知的命令类型: \(pushMessage.cmd)")
             }
-            
         } catch {
             req.logger.error("处理消息失败: \(error)")
         }

@@ -2,9 +2,9 @@ import Foundation
 
 /// 修改密码用例
 public struct ChangePassword: Sendable {
-    private let userRepository: UserRepository
+	private let userRepository: any UserRepository
     
-    public init(userRepository: UserRepository) {
+	public init(userRepository: any UserRepository) {
         self.userRepository = userRepository
     }
     
