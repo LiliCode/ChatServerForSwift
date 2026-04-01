@@ -2,7 +2,7 @@ import Foundation
 
 /// 发送消息用例
 public struct SendMessage: Sendable {
-	private let userRepository: any UserRepository
+    private let userRepository: any UserRepository
     private let connectionManager: any ChatConnectionManager
     private let messageCache: any MessageCache
     
@@ -22,22 +22,23 @@ public struct SendMessage: Sendable {
             throw ApplicationError.userNotFound
         }
         
-        // 2. 创建消息实体
-        let message = ChatMessage(
-            id: input.messageID,
-            fromUserID: input.fromUserID,
-            toUserID: input.toUserID,
-            content: input.content,
-            timestamp: Date()
-        )
+        // 2. 构建 PushMessage (protobuf)
+        var pushMessage = PushMessage()
+        pushMessage.from = uuidToInt64(input.fromUserID)
+        pushMessage.to = uuidToInt64(input.toUserID)
+        pushMessage.timestamp = Int64(Date().timeIntervalSince1970 * 1000)
+        pushMessage.hash = input.messageID
+        pushMessage.payload = input.content
+        
+        let messageData = try pushMessage.serializedData()
         
         // 3. 检查接收者是否在线
-		if await connectionManager.isUserOnline(input.toUserID) {
-            // 在线，直接发送
-            try await connectionManager.sendMessage(to: input.toUserID, message: message)
+        if await connectionManager.isUserOnline(input.toUserID) {
+            // 在线，直接发送二进制数据
+            try await connectionManager.sendMessageData(to: input.toUserID, data: messageData)
         } else {
-            // 离线，缓存消息
-            try await messageCache.cacheOfflineMessage(for: input.toUserID, message: message)
+            // 离线，直接缓存二进制数据
+            try await messageCache.cacheOfflineMessage(for: input.toUserID, messageData: messageData)
         }
     }
 }

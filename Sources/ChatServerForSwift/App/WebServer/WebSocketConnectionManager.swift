@@ -30,11 +30,14 @@ public actor WebSocketConnectionManager: ChatConnectionManager {
     
     // MARK: - 消息发送
     
-    public func sendMessage(to userID: UUID, message: ChatMessage) async throws {
+    public func sendMessageData(to userID: UUID, data: Data) async throws {
         guard let socket = connections[userID] else {
             throw ApplicationError.userOffline
         }
-        
+        try await socket.send(raw: data, opcode: .binary)
+    }
+    
+    public func sendMessage(to userID: UUID, message: ChatMessage) async throws {
         // 构建 PushMessage
         var pushMessage = PushMessage()
         pushMessage.from = uuidToInt64(message.fromUserID)
@@ -44,17 +47,17 @@ public actor WebSocketConnectionManager: ChatConnectionManager {
         pushMessage.payload = message.content
         
         let messageData = try pushMessage.serializedData()
-        try await socket.send(raw: messageData, opcode: .binary)
+        try await sendMessageData(to: userID, data: messageData)
     }
     
     /// 推送离线消息
     public func pushOfflineMessages(to userID: UUID) async throws {
         guard let messageCache = messageCache else { return }
         
-        let messages = try await messageCache.fetchAndClearOfflineMessages(for: userID)
+        let messagesData = try await messageCache.fetchAndClearOfflineMessages(for: userID)
         
-        for message in messages {
-            try await sendMessage(to: userID, message: message)
+        for data in messagesData {
+            try await sendMessageData(to: userID, data: data)
         }
     }
 }

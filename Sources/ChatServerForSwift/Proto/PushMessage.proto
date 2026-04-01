@@ -1,0 +1,26 @@
+syntax = "proto3";
+
+// 推送的消息结构体
+message PushMessage {
+  int64 from = 1;       // 发送者ID
+  int64 to = 2;         // 接收者ID
+  int64 timestamp = 3;  // 时间戳
+  Command cmd = 4;      // 操作指令
+  string hash = 5;      // 消息唯一标识
+  bytes payload = 6;    // 消息体的二进制数据
+}
+
+// 操作指令定义
+enum Command {
+  chatSendMessage = 0;      // 发送普通消息
+  receipt = 1;              // 消息回执，给服务端的回执，确认已经收到
+  twoWayDeletion = 2;       // 双向删除消息
+  twoWayConversation = 3;   // 双向删除会话
+}
+
+// 消息状态定义
+enum MessageState {
+  initial = 0;      // 初始状态
+  delivered = 1;    // 已送达
+  read = 2;         // 已读
+}

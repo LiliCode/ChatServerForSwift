@@ -25,7 +25,7 @@ fileprivate struct _GeneratedWithProtocGenSwiftVersion: SwiftProtobuf.ProtobufAP
   typealias Version = _2
 }
 
-//// 操作指令定义
+/// 操作指令定义
 enum Command: SwiftProtobuf.Enum, Swift.CaseIterable {
   typealias RawValue = Int
 
@@ -43,85 +43,85 @@ enum Command: SwiftProtobuf.Enum, Swift.CaseIterable {
   case UNRECOGNIZED(Int)
 
   init() {
-    self = .chatSendMessage
+	self = .chatSendMessage
   }
 
   init?(rawValue: Int) {
-    switch rawValue {
-    case 0: self = .chatSendMessage
-    case 1: self = .receipt
-    case 2: self = .twoWayDeletion
-    case 3: self = .twoWayConversation
-    default: self = .UNRECOGNIZED(rawValue)
-    }
+	switch rawValue {
+	case 0: self = .chatSendMessage
+	case 1: self = .receipt
+	case 2: self = .twoWayDeletion
+	case 3: self = .twoWayConversation
+	default: self = .UNRECOGNIZED(rawValue)
+	}
   }
 
   var rawValue: Int {
-    switch self {
-    case .chatSendMessage: return 0
-    case .receipt: return 1
-    case .twoWayDeletion: return 2
-    case .twoWayConversation: return 3
-    case .UNRECOGNIZED(let i): return i
-    }
+	switch self {
+	case .chatSendMessage: return 0
+	case .receipt: return 1
+	case .twoWayDeletion: return 2
+	case .twoWayConversation: return 3
+	case .UNRECOGNIZED(let i): return i
+	}
   }
 
   // The compiler won't synthesize support with the UNRECOGNIZED case.
   static let allCases: [Command] = [
-    .chatSendMessage,
-    .receipt,
-    .twoWayDeletion,
-    .twoWayConversation,
+	.chatSendMessage,
+	.receipt,
+	.twoWayDeletion,
+	.twoWayConversation,
   ]
 
 }
 
-//// 消息状态
+/// 消息状态定义
 enum MessageState: SwiftProtobuf.Enum, Swift.CaseIterable {
   typealias RawValue = Int
 
   /// 初始状态
   case initial // = 0
 
-  /// 已送达（接收方收到消息）
+  /// 已送达
   case delivered // = 1
 
-  /// 对方已读（接收方已经阅读消息）
+  /// 已读
   case read // = 2
   case UNRECOGNIZED(Int)
 
   init() {
-    self = .initial
+	self = .initial
   }
 
   init?(rawValue: Int) {
-    switch rawValue {
-    case 0: self = .initial
-    case 1: self = .delivered
-    case 2: self = .read
-    default: self = .UNRECOGNIZED(rawValue)
-    }
+	switch rawValue {
+	case 0: self = .initial
+	case 1: self = .delivered
+	case 2: self = .read
+	default: self = .UNRECOGNIZED(rawValue)
+	}
   }
 
   var rawValue: Int {
-    switch self {
-    case .initial: return 0
-    case .delivered: return 1
-    case .read: return 2
-    case .UNRECOGNIZED(let i): return i
-    }
+	switch self {
+	case .initial: return 0
+	case .delivered: return 1
+	case .read: return 2
+	case .UNRECOGNIZED(let i): return i
+	}
   }
 
   // The compiler won't synthesize support with the UNRECOGNIZED case.
   static let allCases: [MessageState] = [
-    .initial,
-    .delivered,
-    .read,
+	.initial,
+	.delivered,
+	.read,
   ]
 
 }
 
-//// 推送的消息
+/// 推送的消息结构体
 struct PushMessage: Sendable {
   // SwiftProtobuf.Message conformance is added in an extension below. See the
   // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
@@ -165,52 +165,52 @@ extension PushMessage: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementati
   static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}from\0\u{1}to\0\u{1}timestamp\0\u{1}cmd\0\u{1}hash\0\u{1}payload\0")
 
   mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
-    while let fieldNumber = try decoder.nextFieldNumber() {
-      // The use of inline closures is to circumvent an issue where the compiler
-      // allocates stack space for every case branch when no optimizations are
-      // enabled. https://github.com/apple/swift-protobuf/issues/1034
-      switch fieldNumber {
-      case 1: try { try decoder.decodeSingularInt64Field(value: &self.from) }()
-      case 2: try { try decoder.decodeSingularInt64Field(value: &self.to) }()
-      case 3: try { try decoder.decodeSingularInt64Field(value: &self.timestamp) }()
-      case 4: try { try decoder.decodeSingularEnumField(value: &self.cmd) }()
-      case 5: try { try decoder.decodeSingularStringField(value: &self.hash) }()
-      case 6: try { try decoder.decodeSingularBytesField(value: &self.payload) }()
-      default: break
-      }
-    }
+	while let fieldNumber = try decoder.nextFieldNumber() {
+	  // The use of inline closures is to circumvent an issue where the compiler
+	  // allocates stack space for every case branch when no optimizations are
+	  // enabled. https://github.com/apple/swift-protobuf/issues/1034
+	  switch fieldNumber {
+	  case 1: try { try decoder.decodeSingularInt64Field(value: &self.from) }()
+	  case 2: try { try decoder.decodeSingularInt64Field(value: &self.to) }()
+	  case 3: try { try decoder.decodeSingularInt64Field(value: &self.timestamp) }()
+	  case 4: try { try decoder.decodeSingularEnumField(value: &self.cmd) }()
+	  case 5: try { try decoder.decodeSingularStringField(value: &self.hash) }()
+	  case 6: try { try decoder.decodeSingularBytesField(value: &self.payload) }()
+	  default: break
+	  }
+	}
   }
 
   func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
-    if self.from != 0 {
-      try visitor.visitSingularInt64Field(value: self.from, fieldNumber: 1)
-    }
-    if self.to != 0 {
-      try visitor.visitSingularInt64Field(value: self.to, fieldNumber: 2)
-    }
-    if self.timestamp != 0 {
-      try visitor.visitSingularInt64Field(value: self.timestamp, fieldNumber: 3)
-    }
-    if self.cmd != .chatSendMessage {
-      try visitor.visitSingularEnumField(value: self.cmd, fieldNumber: 4)
-    }
-    if !self.hash.isEmpty {
-      try visitor.visitSingularStringField(value: self.hash, fieldNumber: 5)
-    }
-    if !self.payload.isEmpty {
-      try visitor.visitSingularBytesField(value: self.payload, fieldNumber: 6)
-    }
-    try unknownFields.traverse(visitor: &visitor)
+	if self.from != 0 {
+	  try visitor.visitSingularInt64Field(value: self.from, fieldNumber: 1)
+	}
+	if self.to != 0 {
+	  try visitor.visitSingularInt64Field(value: self.to, fieldNumber: 2)
+	}
+	if self.timestamp != 0 {
+	  try visitor.visitSingularInt64Field(value: self.timestamp, fieldNumber: 3)
+	}
+	if self.cmd != .chatSendMessage {
+	  try visitor.visitSingularEnumField(value: self.cmd, fieldNumber: 4)
+	}
+	if !self.hash.isEmpty {
+	  try visitor.visitSingularStringField(value: self.hash, fieldNumber: 5)
+	}
+	if !self.payload.isEmpty {
+	  try visitor.visitSingularBytesField(value: self.payload, fieldNumber: 6)
+	}
+	try unknownFields.traverse(visitor: &visitor)
   }
 
   static func ==(lhs: PushMessage, rhs: PushMessage) -> Bool {
-    if lhs.from != rhs.from {return false}
-    if lhs.to != rhs.to {return false}
-    if lhs.timestamp != rhs.timestamp {return false}
-    if lhs.cmd != rhs.cmd {return false}
-    if lhs.hash != rhs.hash {return false}
-    if lhs.payload != rhs.payload {return false}
-    if lhs.unknownFields != rhs.unknownFields {return false}
-    return true
+	if lhs.from != rhs.from {return false}
+	if lhs.to != rhs.to {return false}
+	if lhs.timestamp != rhs.timestamp {return false}
+	if lhs.cmd != rhs.cmd {return false}
+	if lhs.hash != rhs.hash {return false}
+	if lhs.payload != rhs.payload {return false}
+	if lhs.unknownFields != rhs.unknownFields {return false}
+	return true
   }
 }
