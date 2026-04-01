@@ -2,9 +2,9 @@ import Foundation
 
 /// 获取用户资料用例
 public struct GetUserProfile: Sendable {
-    private let userRepository: UserRepository
+	private let userRepository: any UserRepository
     
-    public init(userRepository: UserRepository) {
+	public init(userRepository: any UserRepository) {
         self.userRepository = userRepository
     }
     

@@ -2,12 +2,12 @@ import Foundation
 
 /// 注册用户用例
 public struct RegisterUser: Sendable {
-    private let userRepository: UserRepository
-    private let orgRepository: OrganizationRepository
+	private let userRepository: any UserRepository
+	private let orgRepository: any OrganizationRepository
     
     public init(
-        userRepository: UserRepository,
-        orgRepository: OrganizationRepository
+		userRepository: any UserRepository,
+		orgRepository: any OrganizationRepository
     ) {
         self.userRepository = userRepository
         self.orgRepository = orgRepository

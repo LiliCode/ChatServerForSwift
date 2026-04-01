@@ -5,15 +5,15 @@ import Vapor
 extension Application {
     // MARK: - Repositories
     
-    var userRepository: UserRepository {
+	var userRepository: any UserRepository {
         FluentUserRepository(db: db)
     }
     
-    var organizationRepository: OrganizationRepository {
+	var organizationRepository: any OrganizationRepository {
         FluentOrganizationRepository(db: db)
     }
     
-    var messageCache: MessageCache {
+	var messageCache: any MessageCache {
         RedisMessageCache(redis: redis)
     }
     

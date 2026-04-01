@@ -2,9 +2,9 @@ import Foundation
 
 /// 用户登录用例
 public struct LoginUser: Sendable {
-    private let userRepository: UserRepository
+	private let userRepository: any UserRepository
     
-    public init(userRepository: UserRepository) {
+	public init(userRepository: any UserRepository) {
         self.userRepository = userRepository
     }
     
