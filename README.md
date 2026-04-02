@@ -1,4 +1,4 @@
-# ChatServerForSwift
+# 一个 Swift 语言版本的简单即使通讯服务器
 
 💧 A project built with the Vapor web framework.
 
@@ -18,6 +18,12 @@ To execute tests, use the following command:
 ```bash
 swift test
 ```
+
+## 离线消息
+
+使用 Redis 缓存离线消息，用户发送的消息对方没收到之前都会缓存到 Redis 服务上，当用户收到消息发送了收到回执之后，就会从 Redis 中删除缓存的离线消息
+
+注意⚠️: 在部署之前需要先部署 Redis 服务
 
 ## 项目架构
 
