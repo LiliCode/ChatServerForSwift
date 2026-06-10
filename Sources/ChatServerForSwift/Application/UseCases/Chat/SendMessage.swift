@@ -32,13 +32,12 @@ public struct SendMessage: Sendable {
         
         let messageData = try pushMessage.serializedData()
         
-        // 3. 检查接收者是否在线
+        // 3. 始终缓存到 Redis，等回执到达才删除，最大限度防止丢消息
+        try await messageCache.cacheOfflineMessage(for: input.toUserID, messageData: messageData)
+        
+        // 4. 接收者在线则立即推送
         if await connectionManager.isUserOnline(input.toUserID) {
-            // 在线，直接发送二进制数据
             try await connectionManager.sendMessageData(to: input.toUserID, data: messageData)
-        } else {
-            // 离线，直接缓存二进制数据
-            try await messageCache.cacheOfflineMessage(for: input.toUserID, messageData: messageData)
         }
     }
 }

@@ -54,7 +54,7 @@ public actor WebSocketConnectionManager: ChatConnectionManager {
     public func pushOfflineMessages(to userID: UUID) async throws {
         guard let messageCache = messageCache else { return }
         
-        let messagesData = try await messageCache.fetchAndClearOfflineMessages(for: userID)
+        let messagesData = try await messageCache.fetchOfflineMessages(for: userID)
         
         for data in messagesData {
             try await sendMessageData(to: userID, data: data)

@@ -16,7 +16,7 @@ public struct RedisMessageCache: MessageCache {
         _ = try await redis.rpush(messageData, into: key).get()
     }
     
-    public func fetchAndClearOfflineMessages(for userID: UUID) async throws -> [Data] {
+    public func fetchOfflineMessages(for userID: UUID) async throws -> [Data] {
         let key = offlineMessageKey(for: userID)
         
         // 获取所有消息
@@ -29,9 +29,6 @@ public struct RedisMessageCache: MessageCache {
                 result.append(data)
             }
         }
-        
-        // 清空缓存
-        _ = try await redis.delete(key).get()
         
         return result
     }
