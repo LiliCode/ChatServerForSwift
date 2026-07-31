@@ -88,9 +88,8 @@ struct ChatWebSocketController: RouteCollection {
     
     /// 处理聊天消息
     private func handleChatMessage(pushMessage: PushMessage, fromUserID: UUID, req: Request) async throws {
-        // 将 Int64 转换为 UUID 字符串
-        let toUserIDString = String(pushMessage.to)
-        guard let toUserID = UUID(uuidString: toUserIDString) else {
+        // 将 Int64 转换回 UUID
+        guard let toUserID = int64ToUUID(pushMessage.to) else {
             req.logger.warning("无效的接收者ID: \(pushMessage.to)")
             return
         }
