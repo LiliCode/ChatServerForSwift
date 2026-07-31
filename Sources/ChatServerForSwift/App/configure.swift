@@ -5,6 +5,9 @@ import FluentSQLiteDriver
 
 // configures your application
 public func configure(_ app: Vapor.Application) async throws {
+    // 错误映射中间件（领域/应用错误 → HTTP 状态码）
+    app.middleware.use(AppErrorMiddleware())
+    
     // 配置 Redis
     app.redis.configuration = try RedisConfiguration(hostname: "localhost")
 
@@ -14,6 +17,7 @@ public func configure(_ app: Vapor.Application) async throws {
     // 添加迁移
     app.migrations.add(CreateUser())
     app.migrations.add(CreateOrganization())
+    app.migrations.add(AddUserPublicKey())
     
     // 运行迁移
     try await app.autoMigrate()

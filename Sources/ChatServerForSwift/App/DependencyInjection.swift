@@ -17,6 +17,10 @@ extension Application {
         RedisMessageCache(redis: redis)
     }
     
+	var keyRepository: any KeyRepository {
+        FluentKeyRepository(db: db)
+    }
+    
     // MARK: - Use Cases
     
     var registerUser: RegisterUser {
@@ -40,6 +44,14 @@ extension Application {
     
     var getUserProfile: GetUserProfile {
         GetUserProfile(userRepository: userRepository)
+    }
+    
+    var uploadPublicKey: UploadPublicKey {
+        UploadPublicKey(keyRepository: keyRepository)
+    }
+    
+    var getPublicKey: GetPublicKey {
+        GetPublicKey(keyRepository: keyRepository)
     }
     
     var sendMessage: SendMessage {

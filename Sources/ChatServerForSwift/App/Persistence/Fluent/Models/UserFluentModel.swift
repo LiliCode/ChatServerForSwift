@@ -20,6 +20,9 @@ final class UserFluentModel: Model, Content, @unchecked Sendable {
     @Field(key: "organization_code")
     var organizationCode: String
     
+    @OptionalField(key: "public_key")
+    var publicKey: String?
+    
     @Timestamp(key: "created_at", on: .create)
     var createdAt: Date?
     

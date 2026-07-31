@@ -27,6 +27,15 @@ struct ChatServerForSwiftTests {
         let nickname: String
     }
     
+    struct UploadPublicKeyRequest: Content {
+        let publicKey: String
+    }
+    
+    struct PublicKeyResponse: Content {
+        let userID: String
+        let publicKey: String?
+    }
+    
     struct UserResponse: Content {
         let id: String
         let username: String
@@ -172,6 +181,56 @@ struct ChatServerForSwiftTests {
             
             try await app.testing().test(.POST, "api/v1/register", beforeRequest: { req in
                 try req.content.encode(registerReq)
+            }, afterResponse: { res async in
+                #expect(res.status == .badRequest)
+            })
+        }
+    }
+    
+    @Test("Test Upload and Get Public Key")
+    func publicKeyFlow() async throws {
+        try await withApp(configure: configure) { app in
+            // 1. 注册用户
+            let registerReq = RegisterRequest(
+                username: "keyuser",
+                password: "password123",
+                organizationCode: "ORG001"
+            )
+            
+            var userID = ""
+            try await app.testing().test(.POST, "api/v1/register", beforeRequest: { req in
+                try req.content.encode(registerReq)
+            }, afterResponse: { res async throws in
+                #expect(res.status == .ok)
+                let user = try res.content.decode(UserResponse.self)
+                userID = user.id
+            })
+            
+            // 2. 上传公钥
+            let publicKey = Data(count: 32).base64EncodedString()
+            let keyReq = UploadPublicKeyRequest(publicKey: publicKey)
+            
+            try await app.testing().test(.POST, "api/v1/keys", beforeRequest: { req in
+                req.headers.add(name: "X-User-ID", value: userID)
+                try req.content.encode(keyReq)
+            }, afterResponse: { res async in
+                #expect(res.status == .ok)
+            })
+            
+            // 3. 获取公钥
+            try await app.testing().test(.GET, "api/v1/keys/\(userID)", beforeRequest: { req in
+                req.headers.add(name: "X-User-ID", value: userID)
+            }, afterResponse: { res async throws in
+                #expect(res.status == .ok)
+                let response = try res.content.decode(PublicKeyResponse.self)
+                #expect(response.publicKey == publicKey)
+            })
+            
+            // 4. 上传无效公钥应返回 400
+            let invalidReq = UploadPublicKeyRequest(publicKey: "invalid-key")
+            try await app.testing().test(.POST, "api/v1/keys", beforeRequest: { req in
+                req.headers.add(name: "X-User-ID", value: userID)
+                try req.content.encode(invalidReq)
             }, afterResponse: { res async in
                 #expect(res.status == .badRequest)
             })

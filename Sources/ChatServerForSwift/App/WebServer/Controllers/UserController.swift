@@ -7,19 +7,25 @@ struct UserController: RouteCollection {
     private let changePassword: ChangePassword
     private let changeNickname: ChangeNickname
     private let getUserProfile: GetUserProfile
+    private let uploadPublicKey: UploadPublicKey
+    private let getPublicKey: GetPublicKey
     
     init(
         registerUser: RegisterUser,
         loginUser: LoginUser,
         changePassword: ChangePassword,
         changeNickname: ChangeNickname,
-        getUserProfile: GetUserProfile
+        getUserProfile: GetUserProfile,
+        uploadPublicKey: UploadPublicKey,
+        getPublicKey: GetPublicKey
     ) {
         self.registerUser = registerUser
         self.loginUser = loginUser
         self.changePassword = changePassword
         self.changeNickname = changeNickname
         self.getUserProfile = getUserProfile
+        self.uploadPublicKey = uploadPublicKey
+        self.getPublicKey = getPublicKey
     }
     
     func boot(routes: any RoutesBuilder) throws {
@@ -34,6 +40,8 @@ struct UserController: RouteCollection {
         protected.get("profile", use: getProfile)
         protected.post("password", use: changePasswordHandler)
         protected.post("nickname", use: changeNicknameHandler)
+        protected.post("keys", use: uploadPublicKeyHandler)
+        protected.get("keys", ":userID", use: getPublicKeyHandler)
     }
     
     // MARK: - 注册
@@ -94,6 +102,34 @@ struct UserController: RouteCollection {
         
         let userDTO = try await changeNickname.execute(useCaseInput)
         return UserResponseDTO(from: userDTO)
+    }
+    
+    // MARK: - 上传公钥
+    
+    func uploadPublicKeyHandler(req: Request) async throws -> Response {
+        let userID = try req.auth.require(UserID.self)
+        let input = try req.content.decode(UploadPublicKeyRequest.self)
+        
+        let useCaseInput = UploadPublicKeyInput(
+            userID: userID.value,
+            publicKey: input.publicKey
+        )
+        
+        try await uploadPublicKey.execute(useCaseInput)
+        
+        return Response(status: .ok, body: .init(string: "公钥上传成功"))
+    }
+    
+    // MARK: - 获取公钥
+    
+    func getPublicKeyHandler(req: Request) async throws -> PublicKeyResponseDTO {
+        guard let targetUserIDString = req.parameters.get("userID"),
+              let targetUserID = UUID(uuidString: targetUserIDString) else {
+            throw Abort(.badRequest, reason: "无效的用户ID")
+        }
+        
+        let publicKey = try await getPublicKey.execute(userID: targetUserID)
+        return PublicKeyResponseDTO(userID: targetUserIDString, publicKey: publicKey)
     }
 }
 

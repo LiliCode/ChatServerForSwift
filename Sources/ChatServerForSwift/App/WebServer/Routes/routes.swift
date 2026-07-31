@@ -18,6 +18,8 @@ func routes(_ app: Application) throws {
     let getUserProfile = app.getUserProfile
     let sendMessage = app.sendMessage
     let processReceipt = app.processReceipt
+    let uploadPublicKey = app.uploadPublicKey
+    let getPublicKey = app.getPublicKey
     
     // 用户控制器
     let userController = UserController(
@@ -25,7 +27,9 @@ func routes(_ app: Application) throws {
         loginUser: loginUser,
         changePassword: changePassword,
         changeNickname: changeNickname,
-        getUserProfile: getUserProfile
+        getUserProfile: getUserProfile,
+        uploadPublicKey: uploadPublicKey,
+        getPublicKey: getPublicKey
     )
     try app.register(collection: userController)
     

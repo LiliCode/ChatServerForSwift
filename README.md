@@ -25,6 +25,10 @@ swift test
 
 注意⚠️: 在部署之前需要先部署 Redis 服务
 
+## 端到端加密 (E2EE)
+
+支持标准 BIP39 助记词恢复机制：客户端生成助记词派生 X25519 密钥对，服务端仅保存公钥，消息内容全程密文。详细协议见 [API.md](API.md)。
+
 ## 项目架构
 
     Sources/
@@ -45,6 +49,7 @@ swift test
     │   │   │   ├── Migrations/
     │   │   │   │   └── CreateTables.swift
     │   │   │   ├── FluentUserRepository.swift
+    │   │   │   ├── FluentKeyRepository.swift
     │   │   │   └── FluentOrganizationRepository.swift
     │   │   └── Redis/               # Redis 实现
     │   │       └── RedisMessageCache.swift
@@ -52,16 +57,19 @@ swift test
     ├── Domain/                      # 领域层 (Entities)
     │   ├── Entities/                # 领域实体
     │   │   ├── User.swift
+    │   │   ├── UserKey.swift        # 用户公钥实体 (E2EE)
     │   │   ├── Organization.swift
     │   │   └── ChatMessage.swift
     │   ├── ValueObjects/            # 值对象
     │   │   ├── Password.swift
+    │   │   ├── PublicKey.swift      # 公钥值对象 (E2EE)
     │   │   ├── Username.swift
     │   │   ├── Nickname.swift
     │   │   ├── OrganizationCode.swift
     │   │   └── DomainError.swift
     │   └── Protocols/               # 领域协议
     │       ├── UserRepository.swift
+    │       ├── KeyRepository.swift  # 公钥仓库 (E2EE)
     │       ├── OrganizationRepository.swift
     │       ├── MessageCache.swift
     │       └── ChatConnectionManager.swift
@@ -72,12 +80,15 @@ swift test
     │   │   │   ├── LoginUser.swift
     │   │   │   ├── ChangePassword.swift
     │   │   │   ├── ChangeNickname.swift
-    │   │   │   └── GetUserProfile.swift
+    │   │   │   ├── GetUserProfile.swift
+    │   │   │   ├── UploadPublicKey.swift   # 上传公钥 (E2EE)
+    │   │   │   └── GetPublicKey.swift      # 获取公钥 (E2EE)
     │   │   └── Chat/
     │   │       ├── SendMessage.swift
     │   │       └── ProcessReceipt.swift
     │   ├── DTOs/                    # 数据传输对象
     │   │   ├── UserDTOs.swift
+    │   │   ├── KeyDTOs.swift        # 公钥 DTO (E2EE)
     │   │   └── ChatDTOs.swift
     │   └── Errors/                  # 应用层错误
     │       └── ApplicationError.swift

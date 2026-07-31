@@ -215,6 +215,118 @@ X-User-ID: {user_uuid}
 
 ---
 
+#### POST /api/v1/keys
+
+上传当前用户的 E2EE 公钥（需要认证）。
+
+**请求头**:
+```
+Content-Type: application/json
+X-User-ID: {user_uuid}
+```
+
+**请求体**:
+```json
+{
+  "publicKey": "base64编码的32字节X25519公钥"
+}
+```
+
+**响应** (`200 OK`):
+```
+公钥上传成功
+```
+
+**错误响应**:
+- `400 Bad Request`: 公钥格式无效（非 base64 或长度非 32 字节）
+- `401 Unauthorized`: 未登录
+- `404 Not Found`: 用户不存在
+
+---
+
+#### GET /api/v1/keys/{userID}
+
+获取指定用户的 E2EE 公钥（需要认证）。
+
+**请求头**:
+```
+X-User-ID: {user_uuid}
+```
+
+**响应** (`200 OK`):
+```json
+{
+  "userID": "550e8400-e29b-41d4-a716-446655440000",
+  "publicKey": "base64编码的32字节X25519公钥"
+}
+```
+
+未设置公钥时 `publicKey` 为 `null`。
+
+**错误响应**:
+- `400 Bad Request`: userID 无效
+- `401 Unauthorized`: 未登录
+
+---
+
+## 端到端加密（E2EE）与助记词恢复
+
+### 概述
+
+消息内容使用 X25519 + AES-GCM 端到端加密，服务器仅保存用户公钥，**永远无法解密消息内容**。加密与解密完全在客户端完成，服务器对 `PushMessage.payload` 中的密文透明转发/缓存。
+
+### 密钥体系
+
+| 项目 | 说明 |
+|------|------|
+| 算法 | X25519 曲线（公钥 32 字节） |
+| 助记词 | 标准 BIP39 英文（12 词，128 bit 熵） |
+| 私钥派生 | 助记词 → PBKDF2 → seed → HKDF → X25519 私钥 |
+| 私钥存储 | **仅存客户端本地**（Keychain），服务器不保存 |
+| 公钥存储 | 服务器（`POST /api/v1/keys` 上传，`GET /api/v1/keys/{id}` 获取） |
+
+### 助记词 → 私钥派生算法（客户端实现规范）
+
+```
+① 生成 128 bit 安全随机熵
+② BIP39 校验和：取熵的 SHA-256 前 4 bit 附加到末尾（共 132 bit）
+③ 每 11 bit 映射一个 BIP39 单词表下标 → 得到 12 个英文助记词
+④ seed = PBKDF2-HMAC-SHA512(
+       password = 助记词短语（单词间空格分隔）,
+       salt = "mnemonic"（BIP39 固定值，可附加可选口令）,
+       iterations = 2048
+   )                      → 64 字节 seed
+⑤ 私钥 = HKDF-SHA256(
+       inputKey = seed,
+       salt = "chat-e2ee",
+       info = "x25519-private-key"
+   )                      → 32 字节
+⑥ X25519 私钥 clamp 后派生公钥
+```
+
+### 恢复流程（App 删除 / 换新设备）
+
+1. 用户输入 12 个助记词
+2. 客户端按上述算法**确定性**派生同一私钥（同一助记词 → 同一私钥）
+3. 从私钥派生公钥
+4. `POST /api/v1/keys` 重新上传公钥（服务端只存公钥，不存私钥）
+5. 历史消息全部可解密，账号无需重建
+
+### 消息加解密（客户端实现规范）
+
+```
+发送：key = X25519协商(A私钥, B公钥)
+      ciphertext = AES-256-GCM(key, 明文)
+      PushMessage.payload = ciphertext + 随机盐
+
+接收：key = X25519协商(B私钥, A公钥)
+      明文 = AES-256-GCM(key, ciphertext)
+```
+
+服务器对 `payload` 内容无感知，仅作为不透明二进制转发与缓存。
+
+---
+
 ## WebSocket API
 
 ### 连接

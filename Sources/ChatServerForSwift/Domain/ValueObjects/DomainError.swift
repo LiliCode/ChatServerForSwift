@@ -16,4 +16,16 @@ public enum DomainError: Error, Sendable {
             return msg
         }
     }
+    
+    /// HTTP 状态码（不依赖 Vapor，由基础设施层转换）
+    public var httpStatus: UInt {
+        switch self {
+        case .validationError:
+            return 400
+        case .notFound:
+            return 404
+        case .alreadyExists:
+            return 409
+        }
+    }
 }

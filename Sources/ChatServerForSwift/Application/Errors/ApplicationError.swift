@@ -28,4 +28,24 @@ public enum ApplicationError: Error, Sendable {
             return "用户离线"
         }
     }
+    
+    /// HTTP 状态码（不依赖 Vapor，由基础设施层转换）
+    public var httpStatus: UInt {
+        switch self {
+        case .validationError:
+            return 400
+        case .userNotFound:
+            return 404
+        case .organizationNotFound:
+            return 400
+        case .usernameAlreadyExists:
+            return 409
+        case .invalidCredentials:
+            return 401
+        case .invalidOldPassword:
+            return 400
+        case .userOffline:
+            return 409
+        }
+    }
 }

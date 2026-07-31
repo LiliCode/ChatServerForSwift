@@ -35,3 +35,18 @@ struct CreateOrganization: AsyncMigration {
         try await database.schema("organizations").delete()
     }
 }
+
+/// 用户表新增公钥字段迁移（E2EE）
+struct AddUserPublicKey: AsyncMigration {
+    func prepare(on database: any Database) async throws {
+        try await database.schema("users")
+            .field("public_key", .string)
+            .update()
+    }
+    
+    func revert(on database: any Database) async throws {
+        try await database.schema("users")
+            .deleteField("public_key")
+            .update()
+    }
+}
