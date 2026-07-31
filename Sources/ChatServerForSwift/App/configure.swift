@@ -18,6 +18,8 @@ public func configure(_ app: Vapor.Application) async throws {
     app.migrations.add(CreateUser())
     app.migrations.add(CreateOrganization())
     app.migrations.add(AddUserPublicKey())
+    app.migrations.add(DropPasswordHash())
+    app.migrations.add(CreateToken())
     
     // 运行迁移
     try await app.autoMigrate()

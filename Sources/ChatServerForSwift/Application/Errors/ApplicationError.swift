@@ -6,9 +6,10 @@ public enum ApplicationError: Error, Sendable {
     case userNotFound
     case organizationNotFound
     case usernameAlreadyExists
-    case invalidCredentials
-    case invalidOldPassword
     case userOffline
+    case publicKeyNotSet
+    case invalidChallenge
+    case invalidKeyProof
     
     public var message: String {
         switch self {
@@ -20,12 +21,14 @@ public enum ApplicationError: Error, Sendable {
             return "组织不存在"
         case .usernameAlreadyExists:
             return "用户名已存在"
-        case .invalidCredentials:
-            return "用户名或密码错误"
-        case .invalidOldPassword:
-            return "旧密码错误"
         case .userOffline:
             return "用户离线"
+        case .publicKeyNotSet:
+            return "账号尚未绑定公钥"
+        case .invalidChallenge:
+            return "登录挑战无效或已过期"
+        case .invalidKeyProof:
+            return "密钥校验失败"
         }
     }
     
@@ -40,12 +43,14 @@ public enum ApplicationError: Error, Sendable {
             return 400
         case .usernameAlreadyExists:
             return 409
-        case .invalidCredentials:
-            return 401
-        case .invalidOldPassword:
-            return 400
         case .userOffline:
             return 409
+        case .publicKeyNotSet:
+            return 400
+        case .invalidChallenge:
+            return 401
+        case .invalidKeyProof:
+            return 401
         }
     }
 }

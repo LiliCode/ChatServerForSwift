@@ -3,29 +3,29 @@ import Vapor
 /// 用户控制器
 struct UserController: RouteCollection {
     private let registerUser: RegisterUser
-    private let loginUser: LoginUser
-    private let changePassword: ChangePassword
+    private let createAuthChallenge: CreateAuthChallenge
+    private let loginWithMnemonic: LoginWithMnemonic
     private let changeNickname: ChangeNickname
     private let getUserProfile: GetUserProfile
-    private let uploadPublicKey: UploadPublicKey
     private let getPublicKey: GetPublicKey
+    private let authMiddleware: AuthMiddleware
     
     init(
         registerUser: RegisterUser,
-        loginUser: LoginUser,
-        changePassword: ChangePassword,
+        createAuthChallenge: CreateAuthChallenge,
+        loginWithMnemonic: LoginWithMnemonic,
         changeNickname: ChangeNickname,
         getUserProfile: GetUserProfile,
-        uploadPublicKey: UploadPublicKey,
-        getPublicKey: GetPublicKey
+        getPublicKey: GetPublicKey,
+        authMiddleware: AuthMiddleware
     ) {
         self.registerUser = registerUser
-        self.loginUser = loginUser
-        self.changePassword = changePassword
+        self.createAuthChallenge = createAuthChallenge
+        self.loginWithMnemonic = loginWithMnemonic
         self.changeNickname = changeNickname
         self.getUserProfile = getUserProfile
-        self.uploadPublicKey = uploadPublicKey
         self.getPublicKey = getPublicKey
+        self.authMiddleware = authMiddleware
     }
     
     func boot(routes: any RoutesBuilder) throws {
@@ -33,14 +33,13 @@ struct UserController: RouteCollection {
         
         // 公开接口
         api.post("register", use: register)
-        api.post("login", use: login)
+        api.post("auth", "challenge", use: createChallenge)
+        api.post("auth", "login", use: mnemonicLogin)
         
         // 需要认证的接口
-        let protected = api.grouped(AuthMiddleware())
+        let protected = api.grouped(authMiddleware)
         protected.get("profile", use: getProfile)
-        protected.post("password", use: changePasswordHandler)
         protected.post("nickname", use: changeNicknameHandler)
-        protected.post("keys", use: uploadPublicKeyHandler)
         protected.get("keys", ":userID", use: getPublicKeyHandler)
     }
     
@@ -52,16 +51,19 @@ struct UserController: RouteCollection {
         return UserResponseDTO(from: userDTO)
     }
     
-    // MARK: - 登录
+    // MARK: - 登录挑战
     
-    func login(req: Request) async throws -> UserResponseDTO {
-        let input = try req.content.decode(LoginUserInput.self)
-        let (userDTO, _) = try await loginUser.execute(input)
-        
-        // 将用户ID存入 header
-        req.headers.add(name: "X-User-ID", value: userDTO.id)
-        
-        return UserResponseDTO(from: userDTO)
+    func createChallenge(req: Request) async throws -> AuthChallengeResponse {
+        let input = try req.content.decode(AuthChallengeRequest.self)
+        return try await createAuthChallenge.execute(username: input.username)
+    }
+    
+    // MARK: - 助记词登录
+    
+    func mnemonicLogin(req: Request) async throws -> LoginResponseDTO {
+        let input = try req.content.decode(MnemonicLoginRequest.self)
+        let (token, userDTO) = try await loginWithMnemonic.execute(input)
+        return LoginResponseDTO(token: token, user: userDTO)
     }
     
     // MARK: - 获取用户信息
@@ -70,23 +72,6 @@ struct UserController: RouteCollection {
         let userID = try req.auth.require(UserID.self)
         let userDTO = try await getUserProfile.execute(userID: userID.value)
         return UserResponseDTO(from: userDTO)
-    }
-    
-    // MARK: - 修改密码
-    
-    func changePasswordHandler(req: Request) async throws -> Response {
-        let userID = try req.auth.require(UserID.self)
-        let input = try req.content.decode(ChangePasswordRequest.self)
-        
-        let useCaseInput = ChangePasswordInput(
-            userID: userID.value,
-            oldPassword: input.oldPassword,
-            newPassword: input.newPassword
-        )
-        
-        try await changePassword.execute(useCaseInput)
-        
-        return Response(status: .ok, body: .init(string: "密码修改成功"))
     }
     
     // MARK: - 修改昵称
@@ -104,22 +89,6 @@ struct UserController: RouteCollection {
         return UserResponseDTO(from: userDTO)
     }
     
-    // MARK: - 上传公钥
-    
-    func uploadPublicKeyHandler(req: Request) async throws -> Response {
-        let userID = try req.auth.require(UserID.self)
-        let input = try req.content.decode(UploadPublicKeyRequest.self)
-        
-        let useCaseInput = UploadPublicKeyInput(
-            userID: userID.value,
-            publicKey: input.publicKey
-        )
-        
-        try await uploadPublicKey.execute(useCaseInput)
-        
-        return Response(status: .ok, body: .init(string: "公钥上传成功"))
-    }
-    
     // MARK: - 获取公钥
     
     func getPublicKeyHandler(req: Request) async throws -> PublicKeyResponseDTO {
@@ -134,11 +103,6 @@ struct UserController: RouteCollection {
 }
 
 // MARK: - Request/Response DTOs
-
-public struct ChangePasswordRequest: Content {
-    let oldPassword: String
-    let newPassword: String
-}
 
 public struct ChangeNicknameRequest: Content {
     let nickname: String

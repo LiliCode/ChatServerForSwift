@@ -7,15 +7,18 @@ struct ChatWebSocketController: RouteCollection {
     private let sendMessage: SendMessage
     private let processReceipt: ProcessReceipt
     private let connectionManager: WebSocketConnectionManager
+    private let tokenRepository: any TokenRepository
     
     init(
         sendMessage: SendMessage,
         processReceipt: ProcessReceipt,
-        connectionManager: WebSocketConnectionManager
+        connectionManager: WebSocketConnectionManager,
+        tokenRepository: any TokenRepository
     ) {
         self.sendMessage = sendMessage
         self.processReceipt = processReceipt
         self.connectionManager = connectionManager
+        self.tokenRepository = tokenRepository
     }
     
     func boot(routes: any RoutesBuilder) throws {
@@ -24,10 +27,10 @@ struct ChatWebSocketController: RouteCollection {
     
     /// 处理 WebSocket 连接
     func handleWebSocket(req: Request, ws: WebSocket) async {
-        // 从查询参数获取用户ID
-        guard let userIDString = req.query[String.self, at: "userId"],
-              let userID = UUID(uuidString: userIDString) else {
-            await ws.closeWithReason(code: .policyViolation, reason: "缺少或无效的用户ID")
+        // 从查询参数获取会话令牌
+        guard let token = req.query[String.self, at: "token"],
+              let userID = try? await tokenRepository.findUserID(for: token) else {
+            await ws.closeWithReason(code: .policyViolation, reason: "缺少或无效的令牌")
             return
         }
         

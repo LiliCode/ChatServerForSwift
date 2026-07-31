@@ -11,9 +11,6 @@ final class UserFluentModel: Model, Content, @unchecked Sendable {
     @Field(key: "username")
     var username: String
     
-    @Field(key: "password_hash")
-    var passwordHash: String
-    
     @Field(key: "nickname")
     var nickname: String
     
@@ -34,13 +31,11 @@ final class UserFluentModel: Model, Content, @unchecked Sendable {
     init(
         id: UUID? = nil,
         username: String,
-        passwordHash: String,
         nickname: String,
         organizationCode: String
     ) {
         self.id = id
         self.username = username
-        self.passwordHash = passwordHash
         self.nickname = nickname
         self.organizationCode = organizationCode
     }
@@ -62,11 +57,10 @@ extension UserFluentModel {
 }
 
 extension User {
-    func toFluentModel(passwordHash: String) -> UserFluentModel {
+    func toFluentModel() -> UserFluentModel {
         UserFluentModel(
             id: id,
             username: username,
-            passwordHash: passwordHash,
             nickname: nickname,
             organizationCode: organizationCode
         )

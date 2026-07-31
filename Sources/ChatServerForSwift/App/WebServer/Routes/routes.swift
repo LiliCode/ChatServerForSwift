@@ -12,24 +12,26 @@ func routes(_ app: Application) throws {
     
     // 获取 Use Cases
     let registerUser = app.registerUser
-    let loginUser = app.loginUser
-    let changePassword = app.changePassword
+    let createAuthChallenge = app.createAuthChallenge
+    let loginWithMnemonic = app.loginWithMnemonic
     let changeNickname = app.changeNickname
     let getUserProfile = app.getUserProfile
+    let getPublicKey = app.getPublicKey
     let sendMessage = app.sendMessage
     let processReceipt = app.processReceipt
-    let uploadPublicKey = app.uploadPublicKey
-    let getPublicKey = app.getPublicKey
+    
+    // 认证中间件（不透明会话令牌）
+    let authMiddleware = AuthMiddleware(tokenRepository: app.tokenRepository)
     
     // 用户控制器
     let userController = UserController(
         registerUser: registerUser,
-        loginUser: loginUser,
-        changePassword: changePassword,
+        createAuthChallenge: createAuthChallenge,
+        loginWithMnemonic: loginWithMnemonic,
         changeNickname: changeNickname,
         getUserProfile: getUserProfile,
-        uploadPublicKey: uploadPublicKey,
-        getPublicKey: getPublicKey
+        getPublicKey: getPublicKey,
+        authMiddleware: authMiddleware
     )
     try app.register(collection: userController)
     
@@ -38,7 +40,8 @@ func routes(_ app: Application) throws {
     let chatController = ChatWebSocketController(
         sendMessage: sendMessage,
         processReceipt: processReceipt,
-        connectionManager: connectionManager
+        connectionManager: connectionManager,
+        tokenRepository: app.tokenRepository
     )
     try app.register(collection: chatController)
 }

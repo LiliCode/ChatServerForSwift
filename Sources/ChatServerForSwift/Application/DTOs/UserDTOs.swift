@@ -3,40 +3,16 @@ import Vapor
 
 // MARK: - Input DTOs
 
-/// 注册用户输入
+/// 注册用户输入（助记词派生密钥对，注册即绑定公钥）
 public struct RegisterUserInput: Content, Sendable {
     public let username: String
-    public let password: String
     public let organizationCode: String
+    public let publicKey: String
     
-    public init(username: String, password: String, organizationCode: String) {
+    public init(username: String, organizationCode: String, publicKey: String) {
         self.username = username
-        self.password = password
         self.organizationCode = organizationCode
-    }
-}
-
-/// 登录用户输入
-public struct LoginUserInput: Content, Sendable {
-    public let username: String
-    public let password: String
-    
-    public init(username: String, password: String) {
-        self.username = username
-        self.password = password
-    }
-}
-
-/// 修改密码输入
-public struct ChangePasswordInput: Sendable {
-    public let userID: UUID
-    public let oldPassword: String
-    public let newPassword: String
-    
-    public init(userID: UUID, oldPassword: String, newPassword: String) {
-        self.userID = userID
-        self.oldPassword = oldPassword
-        self.newPassword = newPassword
+        self.publicKey = publicKey
     }
 }
 

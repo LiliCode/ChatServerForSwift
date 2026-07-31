@@ -50,3 +50,36 @@ struct AddUserPublicKey: AsyncMigration {
             .update()
     }
 }
+
+/// 删除用户表密码哈希列（助记词认证取代密码）
+struct DropPasswordHash: AsyncMigration {
+    func prepare(on database: any Database) async throws {
+        try await database.schema("users")
+            .deleteField("password_hash")
+            .update()
+    }
+    
+    func revert(on database: any Database) async throws {
+        try await database.schema("users")
+            .field("password_hash", .string)
+            .update()
+    }
+}
+
+/// 会话令牌表迁移
+struct CreateToken: AsyncMigration {
+    func prepare(on database: any Database) async throws {
+        try await database.schema("tokens")
+            .id()
+            .field("user_id", .uuid, .required, .references("users", "id"))
+            .field("token", .string, .required)
+            .field("created_at", .datetime)
+            .field("expires_at", .datetime)
+            .unique(on: "token")
+            .create()
+    }
+    
+    func revert(on database: any Database) async throws {
+        try await database.schema("tokens").delete()
+    }
+}

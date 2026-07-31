@@ -21,21 +21,35 @@ extension Application {
         FluentKeyRepository(db: db)
     }
     
+	var tokenRepository: any TokenRepository {
+        FluentTokenRepository(db: db)
+    }
+    
     // MARK: - Use Cases
     
     var registerUser: RegisterUser {
         RegisterUser(
             userRepository: userRepository,
-            orgRepository: organizationRepository
+            orgRepository: organizationRepository,
+            keyRepository: keyRepository
         )
     }
     
-    var loginUser: LoginUser {
-        LoginUser(userRepository: userRepository)
+    var createAuthChallenge: CreateAuthChallenge {
+        CreateAuthChallenge(
+            userRepository: userRepository,
+            keyRepository: keyRepository,
+            challengeStore: AuthChallengeStore.shared
+        )
     }
     
-    var changePassword: ChangePassword {
-        ChangePassword(userRepository: userRepository)
+    var loginWithMnemonic: LoginWithMnemonic {
+        LoginWithMnemonic(
+            userRepository: userRepository,
+            keyRepository: keyRepository,
+            tokenRepository: tokenRepository,
+            challengeStore: AuthChallengeStore.shared
+        )
     }
     
     var changeNickname: ChangeNickname {
@@ -44,10 +58,6 @@ extension Application {
     
     var getUserProfile: GetUserProfile {
         GetUserProfile(userRepository: userRepository)
-    }
-    
-    var uploadPublicKey: UploadPublicKey {
-        UploadPublicKey(keyRepository: keyRepository)
     }
     
     var getPublicKey: GetPublicKey {

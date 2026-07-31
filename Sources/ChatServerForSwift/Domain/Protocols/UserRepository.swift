@@ -12,13 +12,7 @@ public protocol UserRepository: Sendable {
     func existsByUsername(_ username: String) async throws -> Bool
     
     /// 创建用户
-    func create(_ user: User, passwordHash: String) async throws -> User
-    
-    /// 获取密码哈希
-    func getPasswordHash(for userID: UUID) async throws -> String
-    
-    /// 更新密码
-    func updatePassword(userID: UUID, newHash: String) async throws
+    func create(_ user: User) async throws -> User
     
     /// 更新昵称
     func updateNickname(userID: UUID, newNickname: String) async throws

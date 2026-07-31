@@ -31,25 +31,10 @@ public struct FluentUserRepository: UserRepository {
             .first() != nil
     }
     
-    public func create(_ user: User, passwordHash: String) async throws -> User {
-        let model = user.toFluentModel(passwordHash: passwordHash)
+    public func create(_ user: User) async throws -> User {
+        let model = user.toFluentModel()
         try await model.save(on: db)
         return model.toDomain()
-    }
-    
-    public func getPasswordHash(for userID: UUID) async throws -> String {
-        guard let model = try await UserFluentModel.find(userID, on: db) else {
-            throw DomainError.notFound("用户不存在")
-        }
-        return model.passwordHash
-    }
-    
-    public func updatePassword(userID: UUID, newHash: String) async throws {
-        guard let model = try await UserFluentModel.find(userID, on: db) else {
-            throw DomainError.notFound("用户不存在")
-        }
-        model.passwordHash = newHash
-        try await model.save(on: db)
     }
     
     public func updateNickname(userID: UUID, newNickname: String) async throws {
