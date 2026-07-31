@@ -17,11 +17,19 @@
 
 ### 认证方式
 
-需要认证的接口需要在请求头中添加 `X-User-ID` 字段，值为用户的 UUID：
+**当前实现**：登录接口成功后，响应头 `X-User-ID` 返回当前用户 UUID。所有需要认证的接口都通过请求头携带 `X-User-ID` 进行认证：
 
 ```
 X-User-ID: 550e8400-e29b-41d4-a716-446655440000
 ```
+
+需要认证的接口（`/api/v1/profile`、`/password`、`/nickname`、`/keys` 等）缺少或携带无效的 `X-User-ID` 时返回 `401 Unauthorized`。
+
+> **⚠️ 安全限制**：当前认证仅凭 `X-User-ID` 请求头，**无 token、签名或有效期校验**。任何获取到他人 UUID 的客户端都可以冒充该用户。该机制仅适用于开发/内部环境，生产环境必须替换为更强的认证方案（如登录 token + 会话管理）。
+
+**使用要点**：
+1. 登录响应头中的 `X-User-ID` 即用户身份标识，客户端应保存并在后续所有请求中回传
+2. WebSocket 连接使用同一 `userId`（通过 URL 查询参数 `userId` 传递）
 
 ---
 
@@ -82,8 +90,13 @@ Content-Type: application/json
 }
 ```
 
+**字段校验规则**:
+- `username`: 3-20 个字符，仅允许字母、数字、下划线
+- `password`: 至少 6 个字符
+- `organizationCode`: 非空，且必须存在（默认组织：`ORG001`、`ORG002`、`ORG003`）
+
 **错误响应**:
-- `400 Bad Request`: 请求参数无效
+- `400 Bad Request`: 参数格式无效 / 组织不存在
 - `409 Conflict`: 用户名已存在
 
 ---
@@ -148,7 +161,9 @@ X-User-ID: {user_uuid}
 ```
 
 **错误响应**:
+- `400 Bad Request`: 请求参数无效
 - `401 Unauthorized`: 未登录或登录已过期
+- `404 Not Found`: 用户不存在
 
 ---
 
@@ -176,8 +191,9 @@ X-User-ID: {user_uuid}
 ```
 
 **错误响应**:
-- `400 Bad Request`: 请求参数无效
-- `401 Unauthorized`: 未登录或旧密码错误
+- `400 Bad Request`: 请求参数无效 / 旧密码错误 / 新密码格式错误
+- `401 Unauthorized`: 未登录
+- `404 Not Found`: 用户不存在
 
 ---
 
@@ -210,8 +226,9 @@ X-User-ID: {user_uuid}
 ```
 
 **错误响应**:
-- `400 Bad Request`: 请求参数无效
+- `400 Bad Request`: 请求参数无效（昵称 1-20 个字符）
 - `401 Unauthorized`: 未登录
+- `404 Not Found`: 用户不存在
 
 ---
 
@@ -339,8 +356,11 @@ X-User-ID: {user_uuid}
 **连接流程**:
 1. 客户端通过 HTTP 登录获取用户 ID
 2. 使用用户 ID 建立 WebSocket 连接
-3. 连接成功后，服务器会自动推送离线消息
-4. 客户端可以发送和接收消息
+3. 连接成功后，服务器自动推送该用户的**全部离线消息**（Redis 中尚未收到回执的消息）
+4. 客户端对收到的每条消息发送回执后，消息才从服务器删除
+5. 客户端可以继续发送和接收消息
+
+> **多设备/重复连接注意**：同一用户重复连接 WebSocket 时，会再次收到所有尚未发送回执的消息。客户端应根据消息 `hash` 做去重。已发送回执的消息不会被再次推送。
 
 ### 消息格式
 
@@ -357,53 +377,71 @@ message PushMessage {
   int64 timestamp = 3;  // 时间戳（毫秒）
   Command cmd = 4;      // 操作指令
   string hash = 5;      // 消息唯一标识（UUID 字符串）
-  bytes payload = 6;    // 消息体的二进制数据（UTF-8 编码的字符串）
+  bytes payload = 6;    // 消息体的二进制数据（UTF-8 编码的字符串或 E2EE 密文）
 }
 
 enum Command {
   chatSendMessage = 0;      // 发送普通消息
   receipt = 1;              // 消息回执
-  twoWayDeletion = 2;       // 双向删除消息
-  twoWayConversation = 3;   // 双向删除会话
+  twoWayDeletion = 2;       // 双向删除消息（预留未实现）
+  twoWayConversation = 3;   // 双向删除会话（预留未实现）
 }
 ```
 
+**字段注意**：
+- `from`/`to` 使用 `uuidToInt64` 算法转换（见下方「UUID 转换」），转换算法与服务器一致才能正确解析
+- 服务器解析消息时**忽略 `from` 字段**，发送者身份以 WebSocket 连接时的 `userId` 参数为准
+- 服务器收到 `chatSendMessage` 后会校验接收者 `to` 是否有效且存在，无效时仅记录日志，**客户端无任何反馈**
+
 ### 命令说明
 
-| 命令 | 值 | 说明 | 方向 |
-|------|-----|------|------|
-| `chatSendMessage` | 0 | 发送普通消息 | 客户端 → 服务器 → 接收者 |
-| `receipt` | 1 | 消息回执（确认收到） | 客户端 → 服务器 |
-| `twoWayDeletion` | 2 | 双向删除消息 | 客户端 → 服务器 → 双方 |
-| `twoWayConversation` | 3 | 双向删除会话 | 客户端 → 服务器 → 双方 |
+| 命令 | 值 | 说明 | 方向 | 服务端状态 |
+|------|-----|------|------|-----------|
+| `chatSendMessage` | 0 | 发送普通消息 | 客户端 → 服务器 → 接收者 | ✅ 已实现 |
+| `receipt` | 1 | 消息回执（确认收到） | 客户端 → 服务器 | ✅ 已实现 |
+| `twoWayDeletion` | 2 | 双向删除消息 | 客户端 → 服务器 → 双方 | ⏳ 预留未实现 |
+| `twoWayConversation` | 3 | 双向删除会话 | 客户端 → 服务器 → 双方 | ⏳ 预留未实现 |
+
+> **注意**：`twoWayDeletion` 和 `twoWayConversation` 命令在服务端尚未实现，当前收到后仅记录日志忽略。客户端不应依赖这两个命令。
 
 ### 通信流程
 
 #### 发送消息
 
 1. 客户端构建 `PushMessage`：
-   - `from`: 发送者 ID (Int64)
-   - `to`: 接收者 ID (Int64)
-   - `timestamp`: 当前时间戳
+   - `from`: 发送者 ID (Int64，**服务端会忽略，实际以连接时的 userId 为准**)
+   - `to`: 接收者 ID (Int64，与 `from` 使用相同的 UUID→Int64 转换算法)
+   - `timestamp`: 当前时间戳（毫秒）
    - `cmd`: `chatSendMessage` (0)
-   - `hash`: 消息唯一标识（UUID）
-   - `payload`: 消息内容（UTF-8 编码）
+   - `hash`: 消息唯一标识（客户端生成 UUID）
+   - `payload`: 消息内容（UTF-8 编码的明文或 E2EE 密文）
 
-2. 序列化为 Protobuf 二进制数据并发送
+2. 序列化为 Protobuf 二进制数据并通过 WebSocket 发送
 
-3. 服务器转发给接收者（如果在线）或存入离线缓存
+3. 服务端处理逻辑（**先缓存、后推送**）：
+   - **始终**将消息写入接收者的 Redis 离线缓存（`offline:msg:{接收者UUID}`）
+   - 接收者**在线** → 立即通过 WebSocket 推送给接收者
+   - 接收者**离线** → 等待其上线时由服务器推送
+
+4. 消息将**一直保留在 Redis 中，直到收到接收者的回执才删除**
+
+> **重要**：服务端不会向发送者返回任何送达确认。发送方无法从服务端获知消息是否送达；送达状态需要接收方回复或业务层面确认。
 
 #### 接收消息
 
 1. 客户端监听 WebSocket 二进制消息
 
 2. 解析 `PushMessage`：
-   - `from`: 发送者 ID
+   - `from`: 发送者 ID (Int64，需转换为 UUID)
+   - `to`: 接收者 ID（即本用户 ID）
+   - `hash`: 消息唯一标识
    - `payload`: 消息内容
 
-3. 发送回执确认收到：
+3. **必须发送回执确认收到**，否则消息不会从服务器删除：
    - `cmd`: `receipt` (1)
    - `hash`: 收到消息的 hash
+
+> **⚠️ 回执缺失的后果**：若客户端不发送回执，消息会永久保留在 Redis 中，用户**每次重新连接 WebSocket 都会重复收到**该消息。客户端应在成功解析并落盘/入库消息后立即发送回执，避免重复消费。
 
 #### 发送回执
 
@@ -416,34 +454,124 @@ PushMessage {
 }
 ```
 
+> **注意**：服务端处理回执时只使用 `hash` 字段和当前连接的 `userId`，`from`/`to` 字段被忽略。
+
+---
+
+## 完整对接流程
+
+以下为客户端对接本服务的**推荐时序**，涵盖账号、E2EE、实时通信与离线恢复。
+
+### 第 1 步：注册
+
+```
+POST /api/v1/register
+{ "username", "password", "organizationCode" }
+→ 200 { "id", "username", "nickname", "organizationCode", "createdAt" }
+```
+
+### 第 2 步：登录并保存身份
+
+```
+POST /api/v1/login
+{ "username", "password" }
+→ 200 { "id", ... }  （响应头 X-User-ID 即为用户 id）
+```
+
+- 保存响应头 `X-User-ID`（即用户 UUID），后续所有 HTTP 请求携带
+- 登录接口响应体中的 `id` 与 `X-User-ID` 相同
+
+### 第 3 步：E2EE 密钥设置（仅首次 / 换设备时）
+
+1. 客户端生成 12 个 BIP39 英文助记词，**展示给用户备份**
+2. 按「端到端加密」章节的派生算法生成 X25519 私钥/公钥，私钥存本地 Keychain
+3. 上传公钥：`POST /api/v1/keys`，body `{ "publicKey": "<base64 公钥>" }`
+
+> 若已在本设备设置过密钥（本地已有私钥），可跳过此步。App 删除重装后凭助记词恢复私钥并重新上传公钥。
+
+### 第 4 步：连接 WebSocket
+
+```
+ws://{host}/chat?userId={用户UUID}
+```
+
+连接成功后，服务端会立即推送所有尚未收到回执的离线消息。
+
+### 第 5 步：发消息前获取对方公钥（E2EE）
+
+```
+GET /api/v1/keys/{对方UUID}   （请求头带 X-User-ID）
+→ 200 { "userID", "publicKey" }
+```
+
+- `publicKey` 为 `null` 表示对方未设置 E2EE 公钥（可能无法解密，需提示）
+- 客户端应**缓存对方公钥**，仅在找不到或怀疑密钥变更时重新拉取
+
+### 第 6 步：发送消息
+
+1. 用对方公钥加密消息内容（见「消息加解密」）
+2. 构建 `PushMessage`（`cmd=chatSendMessage`，`to=uuidToInt64(对方UUID)`，`hash=新UUID`，`payload=密文`）
+3. 通过 WebSocket 二进制帧发送
+4. 服务端缓存到 Redis 并转发（对方在线则立即送达，离线则等其上线）
+
+### 第 7 步：接收消息并发送回执
+
+1. 收到二进制帧 → 解析 `PushMessage`
+2. 用本地私钥解密 `payload`（E2EE）
+3. **落盘/入库成功后立即发送回执**：`cmd=receipt`，`hash=消息hash`
+4. 服务端收到回执后删除 Redis 中该条消息
+
+### 第 8 步：离线消息恢复
+
+用户离线期间的消息在 Redis 中累积；再次连接 WebSocket 时服务端全部推送。客户端按 `hash` 去重（已消费过的不重复展示），并逐条发送回执。
+
+### 时序图
+
+```
+客户端A                     服务端                        客户端B
+  │ POST /register            │                              │
+  │──────────────────────────▶│                              │
+  │ POST /login               │                              │
+  │──────────────────────────▶│                              │
+  │◀──────────────────────────│  (X-User-ID 响应头)           │
+  │ POST /keys (上传公钥)      │                              │
+  │──────────────────────────▶│                              │
+  │ WS /chat?userId=A         │                              │
+  │══════════════════════════▶│                              │
+  │                           │  (B离线，消息缓存Redis)       │
+  │ GET /keys/B ─────────────▶│                              │
+  │◀──────────────────────────│                              │
+  │ WS 发送 PushMessage ─────▶│                              │
+  │                           │  B上线 WS /chat?userId=B     │
+  │                           │◀════════════════════════════│
+  │                           │─── PushMessage 推送 ────────▶│
+  │                           │◀── receipt ─────────────────│
+  │                           │  (从 Redis 删除该消息)       │
+```
+
 ---
 
 ## 示例代码
 
-### Dart 示例 (使用 shelf_web_socket)
+### Dart 示例 (使用 web_socket_channel + protobuf)
 
 ```dart
 import 'dart:async';
 import 'dart:convert';
-import 'dart:io';
+import 'dart:math';
 import 'dart:typed_data';
 
 import 'package:http/http.dart' as http;
-import 'package:shelf/shelf.dart';
-import 'package:shelf/shelf_io.dart' as shelf_io;
-import 'package:shelf_web_socket/shelf_web_socket.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 import 'package:protobuf/protobuf.dart';
 
-// 生成的 Protobuf 类（假设使用 protobuf 包）
-// 实际使用时需要根据 .proto 文件生成
+// 生成的 Protobuf 类（protoc --dart_out=. PushMessage.proto）
+// 完整对接流程：注册 → 登录 → 上传公钥 → 连接 → 收发消息 → 回执 → 离线恢复
 
-/// 聊天客户端示例
 class ChatClient {
   final String baseUrl;
   final String wsUrl;
   String? userId;
-  String? username;
   WebSocketChannel? _wsChannel;
   final _messageController = StreamController<PushMessage>.broadcast();
 
@@ -451,6 +579,11 @@ class ChatClient {
     this.baseUrl = 'http://localhost:8080',
     this.wsUrl = 'ws://localhost:8080',
   });
+
+  Map<String, String> _authHeaders() => {
+        'Content-Type': 'application/json',
+        if (userId != null) 'X-User-ID': userId!,
+      };
 
   /// 用户注册
   Future<Map<String, dynamic>> register({
@@ -467,17 +600,13 @@ class ChatClient {
         'organizationCode': organizationCode,
       }),
     );
-
     if (response.statusCode == 200) {
-      final data = jsonDecode(response.body);
-      this.username = data['username'];
-      return data;
-    } else {
-      throw Exception('注册失败: ${response.body}');
+      return jsonDecode(response.body);
     }
+    throw Exception('注册失败(${response.statusCode}): ${response.body}');
   }
 
-  /// 用户登录
+  /// 用户登录（保存 userId，后续所有请求带 X-User-ID）
   Future<Map<String, dynamic>> login({
     required String username,
     required String password,
@@ -485,130 +614,82 @@ class ChatClient {
     final response = await http.post(
       Uri.parse('$baseUrl/api/v1/login'),
       headers: {'Content-Type': 'application/json'},
-      body: jsonEncode({
-        'username': username,
-        'password': password,
-      }),
+      body: jsonEncode({'username': username, 'password': password}),
     );
-
     if (response.statusCode == 200) {
-      final data = jsonDecode(response.body);
+      final data = jsonDecode(response.body) as Map<String, dynamic>;
       userId = data['id'];
-      this.username = data['username'];
       return data;
-    } else {
-      throw Exception('登录失败: ${response.body}');
     }
+    throw Exception('登录失败(${response.statusCode}): ${response.body}');
   }
 
-  /// 获取用户信息
-  Future<Map<String, dynamic>> getProfile() async {
-    if (userId == null) throw Exception('未登录');
-
-    final response = await http.get(
-      Uri.parse('$baseUrl/api/v1/profile'),
-      headers: {'X-User-ID': userId!},
-    );
-
-    if (response.statusCode == 200) {
-      return jsonDecode(response.body);
-    } else {
-      throw Exception('获取用户信息失败: ${response.body}');
-    }
-  }
-
-  /// 修改密码
-  Future<void> changePassword({
-    required String oldPassword,
-    required String newPassword,
-  }) async {
-    if (userId == null) throw Exception('未登录');
-
+  /// 上传 E2EE 公钥（base64）
+  Future<void> uploadPublicKey(String base64PublicKey) async {
     final response = await http.post(
-      Uri.parse('$baseUrl/api/v1/password'),
-      headers: {
-        'Content-Type': 'application/json',
-        'X-User-ID': userId!,
-      },
-      body: jsonEncode({
-        'oldPassword': oldPassword,
-        'newPassword': newPassword,
-      }),
+      Uri.parse('$baseUrl/api/v1/keys'),
+      headers: _authHeaders(),
+      body: jsonEncode({'publicKey': base64PublicKey}),
     );
-
     if (response.statusCode != 200) {
-      throw Exception('修改密码失败: ${response.body}');
+      throw Exception('上传公钥失败(${response.statusCode}): ${response.body}');
     }
   }
 
-  /// 修改昵称
-  Future<Map<String, dynamic>> changeNickname(String nickname) async {
-    if (userId == null) throw Exception('未登录');
-
-    final response = await http.post(
-      Uri.parse('$baseUrl/api/v1/nickname'),
-      headers: {
-        'Content-Type': 'application/json',
-        'X-User-ID': userId!,
-      },
-      body: jsonEncode({'nickname': nickname}),
+  /// 获取对方公钥（未设置时返回 null）
+  Future<String?> getPublicKey(String targetUserId) async {
+    final response = await http.get(
+      Uri.parse('$baseUrl/api/v1/keys/$targetUserId'),
+      headers: _authHeaders(),
     );
-
     if (response.statusCode == 200) {
-      return jsonDecode(response.body);
-    } else {
-      throw Exception('修改昵称失败: ${response.body}');
+      final data = jsonDecode(response.body) as Map<String, dynamic>;
+      return data['publicKey'] as String?;
     }
+    throw Exception('获取公钥失败(${response.statusCode}): ${response.body}');
   }
 
-  /// 连接 WebSocket
-  Future<void> connectWebSocket() async {
+  /// 连接 WebSocket，服务器会自动推送未回执的离线消息
+  Future<void> connect() async {
     if (userId == null) throw Exception('未登录');
-
     final wsUri = Uri.parse('$wsUrl/chat?userId=$userId');
     _wsChannel = WebSocketChannel.connect(wsUri);
-
     _wsChannel!.stream.listen(
       (data) {
         if (data is List<int>) {
-          _handleBinaryMessage(Uint8List.fromList(data));
+          _handleBinary(Uint8List.fromList(data));
         }
       },
-      onError: (error) {
-        print('WebSocket 错误: $error');
-      },
-      onDone: () {
-        print('WebSocket 连接关闭');
-      },
+      onError: (e) => print('WebSocket 错误: $e'),
+      onDone: () => print('WebSocket 已关闭'),
     );
-
-    print('WebSocket 已连接');
   }
 
-  /// 处理二进制消息
-  void _handleBinaryMessage(Uint8List data) {
+  /// 处理二进制消息，落盘后立即发送回执
+  void _handleBinary(Uint8List data) {
     try {
-      // 使用 protobuf 解析 PushMessage
-      final message = PushMessage.fromBuffer(data);
-      _messageController.add(message);
-
-      // 自动发送回执
-      if (message.cmd == Command.chatSendMessage) {
-        sendReceipt(message.hash);
+      final msg = PushMessage.fromBuffer(data);
+      _messageController.add(msg);
+      // E2EE：此处用本地私钥解密 msg.payload
+      // final plaintext = e2eeDecrypt(msg.payload);
+      // 落盘/入库成功后立即发送回执，否则服务端不删除缓存、重连会重复推送
+      if (msg.cmd == Command.chatSendMessage) {
+        _sendReceipt(msg.hash);
       }
     } catch (e) {
       print('解析消息失败: $e');
     }
   }
 
-  /// 发送消息
+  /// 发送消息（发送前需获取并缓存对方公钥做 E2EE 加密）
   void sendMessage({
     required String toUserId,
     required String content,
   }) {
     if (_wsChannel == null) throw Exception('WebSocket 未连接');
-
-    final message = PushMessage(
+    // E2EE：使用对方公钥加密内容后写入 payload
+    // final encrypted = e2eeEncrypt(toUserId, utf8.encode(content));
+    final msg = PushMessage(
       from: uuidToInt64(userId!),
       to: uuidToInt64(toUserId),
       timestamp: DateTime.now().millisecondsSinceEpoch,
@@ -616,110 +697,80 @@ class ChatClient {
       hash: generateUuid(),
       payload: utf8.encode(content),
     );
-
-    _wsChannel!.sink.add(message.writeToBuffer());
+    _wsChannel!.sink.add(msg.writeToBuffer());
   }
 
-  /// 发送回执
-  void sendReceipt(String messageHash) {
+  /// 发送回执（触发服务端删除 Redis 缓存）
+  void _sendReceipt(String messageHash) {
     if (_wsChannel == null) return;
-
     final receipt = PushMessage(
       from: uuidToInt64(userId!),
-      timestamp: DateTime.now().millisecondsSinceEpoch,
       cmd: Command.receipt,
       hash: messageHash,
     );
-
     _wsChannel!.sink.add(receipt.writeToBuffer());
   }
 
-  /// 断开 WebSocket 连接
   void disconnect() {
     _wsChannel?.sink.close();
     _wsChannel = null;
   }
 
-  /// 消息流
-  Stream<PushMessage> get messageStream => _messageController.stream;
+  Stream<PushMessage> get messages => _messageController.stream;
 }
 
-/// 辅助函数：UUID 转 Int64
+/// UUID → Int64（与服务端一致的转换：取 UUID 前 8 字节按小端序解释）
 int uuidToInt64(String uuid) {
-  // 实现 UUID 到 Int64 的转换
-  // 取 UUID 前 8 个字节转换为 Int64
-  final bytes = uuidToBytes(uuid);
+  final clean = uuid.replaceAll('-', '');
+  final bytes = <int>[
+    for (var i = 0; i < clean.length; i += 2)
+      int.parse(clean.substring(i, i + 2), radix: 16),
+  ];
   final buffer = ByteData.sublistView(Uint8List.fromList(bytes.sublist(0, 8)));
-  return buffer.getInt64(0, Endian.big);
+  return buffer.getInt64(0, Endian.little);
 }
 
-/// 辅助函数：UUID 字符串转字节
-List<int> uuidToBytes(String uuid) {
-  final cleanUuid = uuid.replaceAll('-', '');
-  final bytes = <int>[];
-  for (var i = 0; i < cleanUuid.length; i += 2) {
-    bytes.add(int.parse(cleanUuid.substring(i, i + 2), radix: 16));
-  }
-  return bytes;
-}
-
-/// 辅助函数：生成 UUID
+/// 生成 UUID
 String generateUuid() {
-  return '${_randomHex(8)}-${_randomHex(4)}-${_randomHex(4)}-${_randomHex(4)}-${_randomHex(12)}';
+  final random = Random.secure();
+  String hex(int len) =>
+      List.generate(len, (_) => random.nextInt(16).toRadixString(16)).join();
+  return '${hex(8)}-${hex(4)}-${hex(4)}-${hex(4)}-${hex(12)}';
 }
 
-String _randomHex(int length) {
-  final random = Random.secure();
-  final chars = '0123456789abcdef';
-  return List.generate(length, (_) => chars[random.nextInt(16)]).join();
-}
+/// E2EE 加解密说明（客户端实现）：
+/// 发送：key = X25519(我方私钥, 对方公钥)
+///       密文 = AES-256-GCM(key, 明文) → 写入 PushMessage.payload
+/// 接收：key = X25519(我方私钥, 对方公钥)
+///       明文 = AES-256-GCM(key, 密文)
+/// 可用 package:cryptography 或 pointycastle 实现
 
 // ==================== 使用示例 ====================
 
-void main() async {
+Future<void> main() async {
   final client = ChatClient();
 
-  try {
-    // 1. 登录
-    print('正在登录...');
-    final loginResult = await client.login(
-      username: 'john_doe',
-      password: 'password123',
-    );
-    print('登录成功: ${loginResult['nickname']}');
+  // 1. 登录
+  await client.login(username: 'john_doe', password: 'password123');
 
-    // 2. 连接 WebSocket
-    print('连接 WebSocket...');
-    await client.connectWebSocket();
+  // 2. 上传公钥（首次使用：助记词 → X25519 密钥对 → 上传公钥）
+  // await client.uploadPublicKey(base64Encode(publicKeyBytes));
 
-    // 3. 监听消息
-    client.messageStream.listen((message) {
-      final content = utf8.decode(message.payload);
-      print('收到消息 [${message.hash}]: $content');
-    });
+  // 3. 连接 WebSocket（自动接收离线消息）
+  await client.connect();
 
-    // 4. 发送消息
-    print('发送消息...');
-    client.sendMessage(
-      toUserId: '接收者UUID',
-      content: '你好，这是一条测试消息！',
-    );
+  // 4. 监听消息（自动回执）
+  client.messages.listen((msg) {
+    final content = utf8.decode(msg.payload); // E2EE 时需先解密
+    print('收到消息 [${msg.hash}]: $content');
+  });
 
-    // 5. 获取用户信息
-    final profile = await client.getProfile();
-    print('用户信息: ${profile['nickname']}');
+  // 5. 发送消息（发送前获取对方公钥做 E2EE）
+  // final peerKey = await client.getPublicKey('对方UUID');
+  client.sendMessage(toUserId: '对方UUID', content: '你好！');
 
-    // 6. 修改昵称
-    await client.changeNickname('新昵称');
-    print('昵称修改成功');
-
-    // 保持连接
-    await Future.delayed(Duration(minutes: 5));
-  } catch (e) {
-    print('错误: $e');
-  } finally {
-    client.disconnect();
-  }
+  await Future.delayed(const Duration(minutes: 5));
+  client.disconnect();
 }
 ```
 
@@ -728,14 +779,8 @@ void main() async {
 ```yaml
 dependencies:
   http: ^1.1.0
-  shelf: ^1.4.1
-  shelf_web_socket: ^2.0.0
   web_socket_channel: ^2.4.0
   protobuf: ^3.1.0
-```
-
----
-
 ### Swift 示例
 
 ```swift
@@ -877,6 +922,50 @@ class ChatAPIClient {
         
         return try JSONDecoder().decode(UserResponse.self, from: data)
     }
+    
+    // MARK: - 上传 E2EE 公钥
+    
+    func uploadPublicKey(_ publicKey: String) async throws {
+        guard let userId = userId else {
+            throw APIError.notAuthenticated
+        }
+        
+        let url = baseURL.appendingPathComponent("api/v1/keys")
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue(userId, forHTTPHeaderField: "X-User-ID")
+        
+        struct Body: Encodable { let publicKey: String }
+        request.httpBody = try JSONEncoder().encode(Body(publicKey: publicKey))
+        
+        let (_, response) = try await URLSession.shared.data(for: request)
+        guard let httpResponse = response as? HTTPURLResponse,
+              httpResponse.statusCode == 200 else {
+            throw APIError.requestFailed("Upload public key failed")
+        }
+    }
+    
+    // MARK: - 获取对方公钥（E2EE 发送前调用）
+    
+    func getPublicKey(of userID: String) async throws -> String? {
+        guard let userId = userId else {
+            throw APIError.notAuthenticated
+        }
+        
+        let url = baseURL.appendingPathComponent("api/v1/keys/\(userID)")
+        var request = URLRequest(url: url)
+        request.setValue(userId, forHTTPHeaderField: "X-User-ID")
+        
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let httpResponse = response as? HTTPURLResponse,
+              httpResponse.statusCode == 200 else {
+            throw APIError.requestFailed(String(data: data, encoding: .utf8) ?? "Unknown error")
+        }
+        
+        struct Response: Decodable { let userID: String; let publicKey: String? }
+        return try JSONDecoder().decode(Response.self, from: data).publicKey
+    }
 }
 
 // MARK: - WebSocket 客户端
@@ -923,6 +1012,8 @@ class ChatWebSocketClient: NSObject {
     // MARK: - 发送消息
     
     func sendMessage(toUserId: String, content: String) {
+        // E2EE：发送前先用 `apiClient.getPublicKey(of: toUserId)` 获取对方公钥，
+        // 并用 X25519 协商密钥 + AES-GCM 加密 content，将密文写入 payload。
         let message = PushMessage(
             from: uuidToInt64(userId),
             to: uuidToInt64(toUserId),
@@ -995,9 +1086,10 @@ class ChatWebSocketClient: NSObject {
     private func handleBinaryMessage(_ data: Data) {
         do {
             let message = try PushMessage(serializedBytes: data)
+            // E2EE：此处先用本地私钥解密 message.payload 后再展示
             onMessageReceived?(message)
             
-            // 自动发送回执
+            // 自动发送回执（落盘成功后必须发送，否则服务端不删除缓存、重连重复推送）
             if message.cmd == .chatSendMessage {
                 sendReceipt(messageHash: message.hash)
             }
@@ -1206,12 +1298,18 @@ class ChatExample {
 
 ## 注意事项
 
-1. **UUID 转换**: WebSocket 消息中的用户 ID 使用 Int64 格式存储，需要通过特定算法将 UUID 字符串转换为 Int64。
+1. **UUID 转换**: WebSocket 消息中的用户 ID 使用 Int64 格式存储，需要通过 `uuidToInt64` 算法将 UUID 字符串转换为 Int64，且转换算法必须与服务器一致（取 UUID 前 8 字节按本机字节序解释为 Int64）。服务器解析接收者 ID 时会用逆转换还原 UUID。
 
-2. **消息回执**: 客户端收到消息后应发送回执（receipt）确认，以便服务器更新消息状态。
+2. **消息回执是必须的**: 客户端收到消息并成功处理（落盘/入库）后，**必须发送回执**（`cmd=receipt` + `hash`）。回执用于触发服务器从 Redis 删除该消息。不发送回执会导致消息永久驻留缓存、每次重连重复推送。
 
-3. **离线消息**: 用户重新连接 WebSocket 时，服务器会自动推送离线期间的消息。
+3. **离线消息**: 用户重新连接 WebSocket 时，服务器会自动推送 Redis 中所有尚未收到回执的离线消息；客户端应依据 `hash` 去重。
 
-4. **Protobuf**: 实际开发时需要根据 `PushMessage.proto` 文件生成对应语言的代码：
+4. **发送无确认**: 服务器不会向发送方返回任何送达/失败确认。若接收者不存在或发送失败，仅记录在服务器日志中，发送方无感知。
+
+5. **认证凭据**: 当前认证仅依赖 `X-User-ID` 请求头（WebSocket 用 `userId` 查询参数），无有效期与签名校验，泄露 UUID 即可冒充。生产环境需更换更强认证方案。
+
+6. **E2EE 公钥**: 公钥上传后长期有效，可随时通过 `POST /api/v1/keys` 覆盖更新（如换设备恢复）。客户端应缓存对方公钥，避免频繁请求；`publicKey` 为 `null` 表示对方未启用 E2EE。
+
+7. **Protobuf**: 实际开发时需要根据 `PushMessage.proto` 文件生成对应语言的代码：
    - Dart: `protoc --dart_out=. PushMessage.proto`
    - Swift: `protoc --swift_out=. PushMessage.proto`
