@@ -9,10 +9,12 @@ public func configure(_ app: Vapor.Application) async throws {
     app.middleware.use(AppErrorMiddleware())
     
     // 配置 Redis
-    app.redis.configuration = try RedisConfiguration(hostname: "localhost")
+    let redisHost = Environment.get("REDIS_HOST") ?? "localhost"
+    app.redis.configuration = try RedisConfiguration(hostname: redisHost)
 
     // 初始化数据库
-    app.databases.use(.sqlite(.file("chat_server_db.sqlite")), as: .sqlite)
+    let dbPath = Environment.get("DB_PATH") ?? "chat_server_db.sqlite"
+    app.databases.use(.sqlite(.file(dbPath)), as: .sqlite)
     
     // 添加迁移
     app.migrations.add(CreateUser())

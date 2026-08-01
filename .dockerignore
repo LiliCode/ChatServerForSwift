@@ -1,2 +1,7 @@
 .build/
 .swiftpm/
+.git/
+.gitignore
+.DS_Store
+data/
+chat_server_db.sqlite
