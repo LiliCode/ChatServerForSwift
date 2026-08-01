@@ -9,8 +9,8 @@ extension Application {
         FluentUserRepository(db: db)
     }
     
-	var organizationRepository: any OrganizationRepository {
-        FluentOrganizationRepository(db: db)
+	var invitationCodeRepository: any InvitationCodeRepository {
+        FluentInvitationCodeRepository(db: db)
     }
     
 	var messageCache: any MessageCache {
@@ -25,14 +25,50 @@ extension Application {
         FluentTokenRepository(db: db)
     }
     
+    // MARK: - 管理员密钥
+    
+    /// 管理员引导密钥（环境变量 ADMIN_SETUP_SECRET，必填，无默认值）
+    private struct AdminSetupSecretKey: StorageKey {
+        typealias Value = String
+    }
+    
+    var adminSetupSecret: String? {
+        get {
+            storage[AdminSetupSecretKey.self] ?? Environment.get("ADMIN_SETUP_SECRET")
+        }
+        set {
+            storage[AdminSetupSecretKey.self] = newValue
+        }
+    }
+    
     // MARK: - Use Cases
     
     var registerUser: RegisterUser {
         RegisterUser(
             userRepository: userRepository,
-            orgRepository: organizationRepository,
+            invitationCodeRepository: invitationCodeRepository,
             keyRepository: keyRepository
         )
+    }
+    
+    var adminRegisterUser: AdminRegisterUser {
+        AdminRegisterUser(
+            userRepository: userRepository,
+            keyRepository: keyRepository,
+            expectedSecret: adminSetupSecret
+        )
+    }
+    
+    var createInvitationCode: CreateInvitationCode {
+        CreateInvitationCode(invitationCodeRepository: invitationCodeRepository)
+    }
+    
+    var listInvitationCodes: ListInvitationCodes {
+        ListInvitationCodes(invitationCodeRepository: invitationCodeRepository)
+    }
+    
+    var revokeInvitationCode: RevokeInvitationCode {
+        RevokeInvitationCode(invitationCodeRepository: invitationCodeRepository)
     }
     
     var createAuthChallenge: CreateAuthChallenge {

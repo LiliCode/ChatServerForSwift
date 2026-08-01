@@ -7,16 +7,24 @@
 #      Start app: docker compose up -d
 #       Stop all: docker compose down
 #
+# 首次使用前请先复制 .env.example 为 .env 并填写必填项：
+#   cp .env.example .env
+# 缺少 ADMIN_SETUP_SECRET 或 REDIS_PASSWORD 时 compose 会报错退出，不会用弱默认值部署。
 
 x-shared_environment: &shared_environment
   LOG_LEVEL: ${LOG_LEVEL:-debug}
+  # 管理员引导密钥（必填，无默认值，用于首次创建管理员账号）
+  ADMIN_SETUP_SECRET: "${ADMIN_SETUP_SECRET:?请先在 .env 中设置 ADMIN_SETUP_SECRET}"
+  # Redis 访问密码（必填，无默认值）
+  REDIS_PASSWORD: "${REDIS_PASSWORD:?请先在 .env 中设置 REDIS_PASSWORD}"
 
 services:
   redis:
     image: redis:7-alpine
     restart: unless-stopped
-    ports:
-      - '6379:6379'
+    environment:
+      REDIS_PASSWORD: "${REDIS_PASSWORD:?请先在 .env 中设置 REDIS_PASSWORD}"
+    command: ["sh", "-c", "exec redis-server --requirepass \"$$REDIS_PASSWORD\""]
     volumes:
       - redis-data:/data
 

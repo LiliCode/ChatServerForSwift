@@ -112,14 +112,14 @@ public struct UserResponseDTO: Content {
     let id: String
     let username: String
     let nickname: String
-    let organizationCode: String
+    let role: String
     let createdAt: Date?
     
     init(from dto: UserDTO) {
         self.id = dto.id
         self.username = dto.username
         self.nickname = dto.nickname
-        self.organizationCode = dto.organizationCode
+        self.role = dto.role
         self.createdAt = dto.createdAt
     }
 }

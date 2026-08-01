@@ -5,7 +5,7 @@ public struct User: Sendable, Identifiable {
     public let id: UUID
     public let username: String
     public let nickname: String
-    public let organizationCode: String
+    public let role: UserRole
     public let createdAt: Date
     public let updatedAt: Date
     
@@ -13,14 +13,14 @@ public struct User: Sendable, Identifiable {
         id: UUID,
         username: String,
         nickname: String,
-        organizationCode: String,
+        role: UserRole,
         createdAt: Date,
         updatedAt: Date
     ) {
         self.id = id
         self.username = username
         self.nickname = nickname
-        self.organizationCode = organizationCode
+        self.role = role
         self.createdAt = createdAt
         self.updatedAt = updatedAt
     }

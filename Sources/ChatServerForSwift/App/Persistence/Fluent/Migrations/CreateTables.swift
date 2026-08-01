@@ -83,3 +83,69 @@ struct CreateToken: AsyncMigration {
         try await database.schema("tokens").delete()
     }
 }
+
+/// 用户表新增角色字段迁移
+struct AddUserRole: AsyncMigration {
+    func prepare(on database: any Database) async throws {
+        try await database.schema("users")
+            .field("role", .string, .required, .sql(.default("user")))
+            .update()
+    }
+    
+    func revert(on database: any Database) async throws {
+        try await database.schema("users")
+            .deleteField("role")
+            .update()
+    }
+}
+
+/// 删除用户表组织码字段迁移（注册改用邀请码）
+struct DropUserOrganizationCode: AsyncMigration {
+    func prepare(on database: any Database) async throws {
+        try await database.schema("users")
+            .deleteField("organization_code")
+            .update()
+    }
+    
+    func revert(on database: any Database) async throws {
+        try await database.schema("users")
+            .field("organization_code", .string, .required)
+            .update()
+    }
+}
+
+/// 邀请码表迁移
+struct CreateInvitationCodeTable: AsyncMigration {
+    func prepare(on database: any Database) async throws {
+        try await database.schema("invitation_codes")
+            .id()
+            .field("code", .string, .required)
+            .field("created_by", .uuid, .required, .references("users", "id"))
+            .field("created_at", .datetime)
+            .field("expires_at", .datetime, .required)
+            .field("used_by", .uuid)
+            .field("used_at", .datetime)
+            .unique(on: "code")
+            .create()
+    }
+    
+    func revert(on database: any Database) async throws {
+        try await database.schema("invitation_codes").delete()
+    }
+}
+
+/// 删除组织表迁移（组织码已废弃）
+struct DropOrganizationTable: AsyncMigration {
+    func prepare(on database: any Database) async throws {
+        try await database.schema("organizations").delete()
+    }
+    
+    func revert(on database: any Database) async throws {
+        try await database.schema("organizations")
+            .field("uid", .int, .identifier(auto: true))
+            .field("code", .string, .required)
+            .field("name", .string, .required)
+            .unique(on: "code")
+            .create()
+    }
+}

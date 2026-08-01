@@ -12,6 +12,10 @@ func routes(_ app: Application) throws {
     
     // 获取 Use Cases
     let registerUser = app.registerUser
+    let adminRegisterUser = app.adminRegisterUser
+    let createInvitationCode = app.createInvitationCode
+    let listInvitationCodes = app.listInvitationCodes
+    let revokeInvitationCode = app.revokeInvitationCode
     let createAuthChallenge = app.createAuthChallenge
     let loginWithMnemonic = app.loginWithMnemonic
     let changeNickname = app.changeNickname
@@ -22,6 +26,7 @@ func routes(_ app: Application) throws {
     
     // 认证中间件（不透明会话令牌）
     let authMiddleware = AuthMiddleware(tokenRepository: app.tokenRepository)
+    let adminMiddleware = AdminMiddleware(userRepository: app.userRepository)
     
     // 用户控制器
     let userController = UserController(
@@ -34,6 +39,17 @@ func routes(_ app: Application) throws {
         authMiddleware: authMiddleware
     )
     try app.register(collection: userController)
+    
+    // 后台管理控制器
+    let adminController = AdminController(
+        adminRegisterUser: adminRegisterUser,
+        createInvitationCode: createInvitationCode,
+        listInvitationCodes: listInvitationCodes,
+        revokeInvitationCode: revokeInvitationCode,
+        authMiddleware: authMiddleware,
+        adminMiddleware: adminMiddleware
+    )
+    try app.register(collection: adminController)
     
     // WebSocket 控制器
     let connectionManager = WebSocketConnectionManager.shared

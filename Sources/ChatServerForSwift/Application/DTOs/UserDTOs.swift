@@ -6,12 +6,12 @@ import Vapor
 /// 注册用户输入（助记词派生密钥对，注册即绑定公钥）
 public struct RegisterUserInput: Content, Sendable {
     public let username: String
-    public let organizationCode: String
+    public let invitationCode: String
     public let publicKey: String
     
-    public init(username: String, organizationCode: String, publicKey: String) {
+    public init(username: String, invitationCode: String, publicKey: String) {
         self.username = username
-        self.organizationCode = organizationCode
+        self.invitationCode = invitationCode
         self.publicKey = publicKey
     }
 }
@@ -34,20 +34,28 @@ public struct UserDTO: Sendable {
     public let id: String
     public let username: String
     public let nickname: String
-    public let organizationCode: String
+    public let role: String
     public let createdAt: Date?
     
     public init(
         id: String,
         username: String,
         nickname: String,
-        organizationCode: String,
+        role: String,
         createdAt: Date?
     ) {
         self.id = id
         self.username = username
         self.nickname = nickname
-        self.organizationCode = organizationCode
+        self.role = role
         self.createdAt = createdAt
+    }
+    
+    public init(user: User) {
+        self.id = user.id.uuidString
+        self.username = user.username
+        self.nickname = user.nickname
+        self.role = user.role.rawValue
+        self.createdAt = user.createdAt
     }
 }

@@ -13,12 +13,6 @@ public struct GetUserProfile: Sendable {
             throw ApplicationError.userNotFound
         }
         
-        return UserDTO(
-            id: user.id.uuidString,
-            username: user.username,
-            nickname: user.nickname,
-            organizationCode: user.organizationCode,
-            createdAt: user.createdAt
-        )
+        return UserDTO(user: user)
     }
 }

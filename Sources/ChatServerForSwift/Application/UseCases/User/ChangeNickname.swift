@@ -26,12 +26,6 @@ public struct ChangeNickname: Sendable {
         // 4. 返回更新后的用户信息
         let updatedUser = try await userRepository.findByID(user.id)!
         
-        return UserDTO(
-            id: updatedUser.id.uuidString,
-            username: updatedUser.username,
-            nickname: updatedUser.nickname,
-            organizationCode: updatedUser.organizationCode,
-            createdAt: updatedUser.createdAt
-        )
+        return UserDTO(user: updatedUser)
     }
 }

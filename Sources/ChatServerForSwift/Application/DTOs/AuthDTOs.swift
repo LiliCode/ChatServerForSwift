@@ -44,7 +44,7 @@ public struct LoginResponseDTO: Content {
     public let id: String
     public let username: String
     public let nickname: String
-    public let organizationCode: String
+    public let role: String
     public let createdAt: Date?
     
     public init(token: String, user: UserDTO) {
@@ -52,7 +52,7 @@ public struct LoginResponseDTO: Content {
         self.id = user.id
         self.username = user.username
         self.nickname = user.nickname
-        self.organizationCode = user.organizationCode
+        self.role = user.role
         self.createdAt = user.createdAt
     }
 }

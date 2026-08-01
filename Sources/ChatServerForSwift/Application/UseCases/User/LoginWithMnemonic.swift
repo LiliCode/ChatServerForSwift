@@ -60,14 +60,7 @@ public struct LoginWithMnemonic: Sendable {
         // 4. 颁发会话令牌
         let authToken = try await tokenRepository.create(for: user.id)
         
-        let userDTO = UserDTO(
-            id: user.id.uuidString,
-            username: user.username,
-            nickname: user.nickname,
-            organizationCode: user.organizationCode,
-            createdAt: user.createdAt
-        )
-        return (authToken.token, userDTO)
+        return (authToken.token, UserDTO(user: user))
     }
     
     /// proof = HMAC-SHA256(key: 共享密钥原始字节, data: nonce || username)

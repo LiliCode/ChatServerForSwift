@@ -25,9 +25,12 @@ enum Entrypoint {
             // 错误映射中间件（领域/应用错误 → HTTP 状态码）
             app.middleware.use(AppErrorMiddleware())
             
-            // 配置 Redis
+            // 配置 Redis（REDIS_PASSWORD 可选，生产环境建议设置）
             let redisHost = Environment.get("REDIS_HOST") ?? "localhost"
-            app.redis.configuration = try RedisConfiguration(hostname: redisHost)
+            app.redis.configuration = try RedisConfiguration(
+                hostname: redisHost,
+                password: Environment.get("REDIS_PASSWORD")
+            )
 
             // 初始化数据库
             let dbPath = Environment.get("DB_PATH") ?? "chat_server_db.sqlite"
@@ -39,15 +42,16 @@ enum Entrypoint {
             app.migrations.add(AddUserPublicKey())
             app.migrations.add(DropPasswordHash())
             app.migrations.add(CreateToken())
+            app.migrations.add(AddUserRole())
+            app.migrations.add(DropUserOrganizationCode())
+            app.migrations.add(CreateInvitationCodeTable())
+            app.migrations.add(DropOrganizationTable())
             
             // 运行迁移
             try await app.autoMigrate()
             
             // 配置 WebSocket 连接管理器
             await WebSocketConnectionManager.shared.configure(messageCache: RedisMessageCache(redis: app.redis))
-            
-            // 初始化默认组织
-            try await initializeDefaultOrganizations(on: app)
 
             // register routes
             try routes(app)
@@ -59,28 +63,5 @@ enum Entrypoint {
             throw error
         }
         try await app.asyncShutdown()
-    }
-}
-
-/// 初始化默认组织
-private func initializeDefaultOrganizations(on app: Application) async throws {
-    let repository = FluentOrganizationRepository(db: app.db)
-    
-    // 检查是否已有组织
-    guard try await !repository.existsByCode("ORG001") else {
-        return
-    }
-    
-    app.logger.info("创建默认组织...")
-    
-    let defaultOrganizations = [
-        (code: "ORG001", name: "默认组织"),
-        (code: "ORG002", name: "测试组织"),
-        (code: "ORG003", name: "开发组织")
-    ]
-    
-    for org in defaultOrganizations {
-        _ = try await repository.create(code: org.code, name: org.name)
-        app.logger.info("组织码: \(org.code) - \(org.name)")
     }
 }

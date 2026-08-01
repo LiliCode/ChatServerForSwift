@@ -3,16 +3,16 @@ import Foundation
 /// 注册用户用例（注册时即绑定 E2EE 公钥，助记词认证取代密码）
 public struct RegisterUser: Sendable {
     private let userRepository: any UserRepository
-    private let orgRepository: any OrganizationRepository
+    private let invitationCodeRepository: any InvitationCodeRepository
     private let keyRepository: any KeyRepository
     
     public init(
         userRepository: any UserRepository,
-        orgRepository: any OrganizationRepository,
+        invitationCodeRepository: any InvitationCodeRepository,
         keyRepository: any KeyRepository
     ) {
         self.userRepository = userRepository
-        self.orgRepository = orgRepository
+        self.invitationCodeRepository = invitationCodeRepository
         self.keyRepository = keyRepository
     }
     
@@ -20,15 +20,21 @@ public struct RegisterUser: Sendable {
         // 1. 验证用户名
         _ = try Username(input.username)
         
-        // 2. 验证组织码
-        _ = try OrganizationCode(input.organizationCode)
+        // 2. 验证邀请码
+        let invitationValue = try InvitationCodeValue(input.invitationCode)
         
         // 3. 验证公钥格式（base64 32字节）
         _ = try PublicKey(input.publicKey)
         
-        // 4. 检查组织码是否存在
-        guard try await orgRepository.existsByCode(input.organizationCode) else {
-            throw ApplicationError.organizationNotFound
+        // 4. 校验邀请码真实有效（存在、未过期、未使用）
+        guard let invitation = try await invitationCodeRepository.findByCode(invitationValue.value) else {
+            throw ApplicationError.invitationCodeNotFound
+        }
+        guard !invitation.isExpired else {
+            throw ApplicationError.invitationCodeExpired
+        }
+        guard !invitation.isUsed else {
+            throw ApplicationError.invitationCodeUsed
         }
         
         // 5. 检查用户名是否已存在
@@ -36,28 +42,25 @@ public struct RegisterUser: Sendable {
             throw ApplicationError.usernameAlreadyExists
         }
         
-        // 6. 创建用户
+        // 6. 创建用户（默认普通用户角色）
         let now = Date()
         let user = User(
             id: UUID(),
             username: input.username,
             nickname: input.username,
-            organizationCode: input.organizationCode,
+            role: .user,
             createdAt: now,
             updatedAt: now
         )
         
         let createdUser = try await userRepository.create(user)
         
-        // 7. 绑定公钥到新账号
+        // 7. 标记邀请码已被使用（单次使用）
+        try await invitationCodeRepository.markUsed(code: invitation.code, usedBy: createdUser.id)
+        
+        // 8. 绑定公钥到新账号
         try await keyRepository.upsertPublicKey(input.publicKey, for: createdUser.id)
         
-        return UserDTO(
-            id: createdUser.id.uuidString,
-            username: createdUser.username,
-            nickname: createdUser.nickname,
-            organizationCode: createdUser.organizationCode,
-            createdAt: createdUser.createdAt
-        )
+        return UserDTO(user: createdUser)
     }
 }

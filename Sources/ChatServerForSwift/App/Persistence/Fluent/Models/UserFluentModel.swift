@@ -14,8 +14,8 @@ final class UserFluentModel: Model, Content, @unchecked Sendable {
     @Field(key: "nickname")
     var nickname: String
     
-    @Field(key: "organization_code")
-    var organizationCode: String
+    @Field(key: "role")
+    var role: String
     
     @OptionalField(key: "public_key")
     var publicKey: String?
@@ -32,12 +32,12 @@ final class UserFluentModel: Model, Content, @unchecked Sendable {
         id: UUID? = nil,
         username: String,
         nickname: String,
-        organizationCode: String
+        role: String
     ) {
         self.id = id
         self.username = username
         self.nickname = nickname
-        self.organizationCode = organizationCode
+        self.role = role
     }
 }
 
@@ -49,7 +49,7 @@ extension UserFluentModel {
             id: id!,
             username: username,
             nickname: nickname,
-            organizationCode: organizationCode,
+            role: UserRole(rawValue: role) ?? .user,
             createdAt: createdAt ?? Date(),
             updatedAt: updatedAt ?? Date()
         )
@@ -62,7 +62,7 @@ extension User {
             id: id,
             username: username,
             nickname: nickname,
-            organizationCode: organizationCode
+            role: role.rawValue
         )
     }
 }

@@ -62,7 +62,7 @@ OK
 
 #### POST /api/v1/register
 
-用户注册（**注册即绑定 E2EE 公钥**，助记词取代密码）。
+用户注册（**注册即绑定 E2EE 公钥**，助记词取代密码，需提供有效邀请码）。
 
 **请求头**:
 ```
@@ -72,9 +72,9 @@ Content-Type: application/json
 **请求体**:
 ```json
 {
-  "username": "string",        // 用户名，必填
-  "organizationCode": "string",// 组织代码，必填（如：ORG001）
-  "publicKey": "string"        // X25519 公钥，base64 编码 32 字节，必填
+  "username": "string",      // 用户名，必填
+  "invitationCode": "string",// 邀请码，必填（由管理员生成，单次使用、带过期时间）
+  "publicKey": "string"      // X25519 公钥，base64 编码 32 字节，必填
 }
 ```
 
@@ -84,20 +84,20 @@ Content-Type: application/json
   "id": "550e8400-e29b-41d4-a716-446655440000",
   "username": "john_doe",
   "nickname": "john_doe",
-  "organizationCode": "ORG001",
+  "role": "user",
   "createdAt": "2024-01-01T00:00:00Z"
 }
 ```
 
 **字段校验规则**:
 - `username`: 3-20 个字符，仅允许字母、数字、下划线
-- `organizationCode`: 非空，且必须存在（默认组织：`ORG001`、`ORG002`、`ORG003`）
+- `invitationCode`: 非空，且必须是管理员生成、**未过期且未使用**的邀请码
 - `publicKey`: base64 编码的 32 字节 X25519 公钥
 
-> **说明**：注册前客户端须生成 12 词 BIP39 助记词并派生 X25519 密钥对，将公钥随注册上传。注册成功后该公钥即与账号绑定，**无独立的公钥上传接口**。公钥由助记词确定性派生，换设备时用同一助记词派生同一公钥，无需重新上传。
+> **说明**：注册前客户端须生成 12 词 BIP39 助记词并派生 X25519 密钥对，将公钥随注册上传。注册成功后该公钥即与账号绑定，**无独立的公钥上传接口**。公钥由助记词确定性派生，换设备时用同一助记词派生同一公钥，无需重新上传。注册用户角色默认为 `user`。
 
 **错误响应**:
-- `400 Bad Request`: 参数格式无效 / 组织不存在 / 公钥格式无效
+- `400 Bad Request`: 参数格式无效 / 邀请码不存在、已过期或已被使用 / 公钥格式无效
 - `409 Conflict`: 用户名已存在
 
 ---
@@ -165,7 +165,7 @@ proof  = HMAC-SHA256(key: ss, data: nonce || username)
   "id": "550e8400-e29b-41d4-a716-446655440000",
   "username": "john_doe",
   "nickname": "John",
-  "organizationCode": "ORG001",
+  "role": "user",
   "createdAt": "2024-01-01T00:00:00Z"
 }
 ```
@@ -194,7 +194,7 @@ Authorization: Bearer {token}
   "id": "550e8400-e29b-41d4-a716-446655440000",
   "username": "john_doe",
   "nickname": "John",
-  "organizationCode": "ORG001",
+  "role": "user",
   "createdAt": "2024-01-01T00:00:00Z"
 }
 ```
@@ -229,7 +229,7 @@ Authorization: Bearer {token}
   "id": "550e8400-e29b-41d4-a716-446655440000",
   "username": "john_doe",
   "nickname": "NewNickname",
-  "organizationCode": "ORG001",
+  "role": "user",
   "createdAt": "2024-01-01T00:00:00Z"
 }
 ```
@@ -265,6 +265,118 @@ Authorization: Bearer {token}
 - `401 Unauthorized`: 未登录
 
 > **注意**：当前系统**没有公钥上传/更新接口**。公钥在注册时绑定，且由助记词确定性派生（同一助记词 → 同一公钥），因此换设备后无需重新上传。
+
+---
+
+### 后台管理接口（邀请码管理）
+
+后台管理接口的基础路径为 `/api/v1/admin`。所有接口（除管理员注册外）都需要登录令牌，且当前用户角色必须为 `admin`，否则返回 `403 Forbidden`。
+
+#### POST /api/v1/admin/register
+
+管理员注册（**首次引导**）。通过管理员密钥 `ADMIN_SETUP_SECRET`（环境变量，**必填、无默认值**）创建管理员账号，无需登录。
+
+**请求头**:
+```
+Content-Type: application/json
+```
+
+**请求体**:
+```json
+{
+  "username": "string",     // 用户名，必填
+  "publicKey": "string",    // X25519 公钥，base64 编码 32 字节，必填
+  "adminSecret": "string"   // 管理员密钥（环境变量 ADMIN_SETUP_SECRET），必填
+}
+```
+
+**响应** (`200 OK`):
+```json
+{
+  "id": "550e8400-e29b-41d4-a716-446655440000",
+  "username": "root",
+  "nickname": "root",
+  "role": "admin",
+  "createdAt": "2024-01-01T00:00:00Z"
+}
+```
+
+**错误响应**:
+- `403 Forbidden`: 管理员密钥无效
+- `409 Conflict`: 用户名已存在
+- `503 Service Unavailable`: 服务器未配置 `ADMIN_SETUP_SECRET`（部署时必须设置该环境变量，无默认值）
+
+> **说明**：用户角色有 `admin`（管理员）与 `user`（普通用户）两种。普通用户注册接口（`POST /api/v1/register`）创建的角色始终为 `user`；只有通过本接口凭 `ADMIN_SETUP_SECRET` 创建的管理员，才能登录后台管理器并使用邀请码管理接口。
+
+#### POST /api/v1/admin/invitations
+
+生成邀请码（仅管理员）。邀请码为 12 位字母数字，**单次使用**，过期后不可用于注册。
+
+**请求头**:
+```
+Content-Type: application/json
+Authorization: Bearer {token}
+```
+
+**请求体**（`expiresAt` 可选，缺省为 7 天后过期）:
+```json
+{
+  "expiresAt": "2024-02-01T00:00:00Z"
+}
+```
+
+**响应** (`200 OK`):
+```json
+{
+  "code": "Ab3xY9kQw2nE",
+  "createdAt": "2024-01-01T00:00:00Z",
+  "expiresAt": "2024-02-01T00:00:00Z",
+  "status": "valid"
+}
+```
+
+`status` 取值：`valid`（有效）、`expired`（已过期）、`used`（已被使用）。
+
+**错误响应**:
+- `401 Unauthorized`: 未登录
+- `403 Forbidden`: 非管理员
+
+#### GET /api/v1/admin/invitations
+
+邀请码列表（仅管理员）。
+
+**请求头**:
+```
+Authorization: Bearer {token}
+```
+
+**响应** (`200 OK`):
+```json
+[
+  {
+    "code": "Ab3xY9kQw2nE",
+    "createdAt": "2024-01-01T00:00:00Z",
+    "expiresAt": "2024-02-01T00:00:00Z",
+    "status": "valid"
+  }
+]
+```
+
+#### DELETE /api/v1/admin/invitations/{code}
+
+撤销邀请码（仅管理员）。撤销后该邀请码不可再用于注册。
+
+**请求头**:
+```
+Authorization: Bearer {token}
+```
+
+**响应** (`200 OK`)
+
+**错误响应**:
+- `401 Unauthorized`: 未登录
+- `403 Forbidden`: 非管理员
+- `400 Bad Request`: 邀请码不存在
 
 ---
 
@@ -451,8 +563,8 @@ PushMessage {
 
 ```
 POST /api/v1/register
-{ "username", "organizationCode", "publicKey" }
-→ 200 { "id", "username", "nickname", "organizationCode", "createdAt" }
+{ "username", "invitationCode", "publicKey" }
+→ 200 { "id", "username", "nickname", "role", "createdAt" }
 ```
 
 1. 客户端生成 12 个 BIP39 英文助记词，**展示给用户备份**
@@ -470,7 +582,7 @@ POST /api/v1/auth/challenge
 
 POST /api/v1/auth/login
 { "username", "nonce", "proof" }
-→ 200 { "token", "id", "username", "nickname", "organizationCode", "createdAt" }
+→ 200 { "token", "id", "username", "nickname", "role", "createdAt" }
 ```
 
 1. 用本地助记词派生的**私钥** + 服务器临时公钥计算共享密钥 `ss`
@@ -584,7 +696,7 @@ class ChatClient {
   /// 用户注册（注册即绑定公钥）
   Future<Map<String, dynamic>> register({
     required String username,
-    required String organizationCode,
+    required String invitationCode,
     required String base64PublicKey,
   }) async {
     final response = await http.post(
@@ -592,7 +704,7 @@ class ChatClient {
       headers: {'Content-Type': 'application/json'},
       body: jsonEncode({
         'username': username,
-        'organizationCode': organizationCode,
+        'invitationCode': invitationCode,
         'publicKey': base64PublicKey,
       }),
     );
@@ -774,7 +886,7 @@ Future<void> main() async {
 
   // 1. 首次使用：生成助记词 → 派生 X25519 密钥对 → 注册绑定公钥
   // final keypair = deriveKeyPairFromMnemonic(mnemonic);
-  // await client.register(username: 'john_doe', organizationCode: 'ORG001',
+  // await client.register(username: 'john_doe', invitationCode: 'Ab3xY9kQw2nE',
   //     base64PublicKey: base64Encode(keypair.publicKey));
 
   // 2. 助记词登录（挑战-响应，保存 token）
@@ -826,7 +938,7 @@ class ChatAPIClient {
     
     // MARK: - 用户注册（注册即绑定公钥）
     
-    func register(username: String, organizationCode: String, publicKeyBase64: String) async throws -> UserResponse {
+    func register(username: String, invitationCode: String, publicKeyBase64: String) async throws -> UserResponse {
         let url = baseURL.appendingPathComponent("api/v1/register")
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
@@ -834,7 +946,7 @@ class ChatAPIClient {
         
         let body = RegisterRequest(
             username: username,
-            organizationCode: organizationCode,
+            invitationCode: invitationCode,
             publicKey: publicKeyBase64
         )
         request.httpBody = try JSONEncoder().encode(body)
@@ -1090,7 +1202,7 @@ extension ChatWebSocketClient: URLSessionWebSocketDelegate {
 
 struct RegisterRequest: Codable {
     let username: String
-    let organizationCode: String
+    let invitationCode: String
     let publicKey: String
 }
 
@@ -1114,7 +1226,7 @@ struct LoginResponse: Codable {
     let id: String
     let username: String
     let nickname: String
-    let organizationCode: String
+    let role: String
     let createdAt: Date?
 }
 
@@ -1126,7 +1238,7 @@ struct UserResponse: Codable {
     let id: String
     let username: String
     let nickname: String
-    let organizationCode: String
+    let role: String
     let createdAt: Date?
 }
 
@@ -1198,7 +1310,7 @@ class ChatExample {
             // 1. 首次使用：生成助记词 → 派生密钥对 → 注册绑定公钥
             // let keypair = try deriveKeyPairFromMnemonic("word1 word2 ... word12")
             // let user = try await apiClient.register(
-            //     username: "john_doe", organizationCode: "ORG001",
+            //     username: "john_doe", invitationCode: "Ab3xY9kQw2nE",
             //     publicKeyBase64: keypair.publicKey.rawRepresentation.base64EncodedString()
             // )
             
