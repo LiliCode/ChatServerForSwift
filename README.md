@@ -58,6 +58,80 @@ docker compose up -d
 
 > ⚠️ 本仓库开源，所有密钥均**没有硬编码默认值**。请勿把真实 `.env` 提交到仓库。
 
+## Ubuntu Docker 部署
+
+以下为在 Ubuntu 服务器上使用 Docker Compose 部署的完整流程。
+
+### 1. 安装 Docker 与 Compose
+
+```bash
+sudo apt-get update
+sudo apt-get install -y ca-certificates curl gnupg
+sudo install -m 0755 -d /etc/apt/keyrings
+curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu $(. /etc/os-release && echo $VERSION_CODENAME) stable" | sudo tee /etc/apt/sources.list.d/docker.list
+sudo apt-get update && sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin
+sudo systemctl enable --now docker
+```
+
+### 2. 获取代码并配置环境变量
+
+```bash
+git clone <仓库地址> && cd ChatServerForSwift
+cp .env.example .env
+
+# 生成两个强随机密钥（openssl rand -hex 32）
+sed -i "s|ADMIN_SETUP_SECRET=.*|ADMIN_SETUP_SECRET=$(openssl rand -hex 32)|" .env
+sed -i "s|REDIS_PASSWORD=.*|REDIS_PASSWORD=$(openssl rand -hex 32)|" .env
+chmod 600 .env   # 勿提交到仓库
+```
+
+### 3. 构建并启动
+
+```bash
+docker compose build          # 首次构建较久（需编译 Swift）
+docker compose up -d
+docker compose ps             # redis + app 均应为 Up
+curl http://localhost:8080/health   # → OK
+```
+
+### 4. 首次初始化管理员
+
+用助记词派生 X25519 公钥后调用引导接口（密钥为 `.env` 中 `ADMIN_SETUP_SECRET` 的值）：
+
+```bash
+curl -X POST http://localhost:8080/api/v1/admin/register \
+  -H "Content-Type: application/json" \
+  -d '{"username":"root","publicKey":"<base64 32字节公钥>","adminSecret":"<ADMIN_SETUP_SECRET 的值>"}'
+```
+
+成功返回 `200`，`role` 为 `admin`。
+
+### 5. 登录并生成邀请码
+
+```
+POST /api/v1/auth/challenge      → { nonce, ephemeralPublicKey }
+POST /api/v1/auth/login          → { token, ... }  （后续请求带 Authorization: Bearer <token>）
+POST /api/v1/admin/invitations   → { code, expiresAt, status }   （生成邀请码）
+GET  /api/v1/admin/invitations   → 邀请码列表
+DELETE /api/v1/admin/invitations/{code}  → 撤销邀请码
+```
+
+邀请码单次使用、带过期时间；普通用户凭邀请码调用 `POST /api/v1/register` 注册。
+
+### 6. 运维
+
+- **日志**：`docker compose logs -f app`
+- **更新**：`git pull && docker compose build --pull && docker compose up -d`（下次启动自动执行数据库迁移）
+- **备份**：SQLite 数据库位于 `./data/chat_server_db.sqlite`（建议定期备份该目录）；Redis 中仅存离线消息缓存，可随时丢弃
+- **重启策略**：服务已配置 `restart: unless-stopped`，主机重启后自动拉起
+
+### 7. 安全建议
+
+- 前端建议加 Caddy/nginx 反代启用 HTTPS（容器对外暴露 8080，443 由反代处理）
+- 防火墙：`sudo ufw allow 443`（或 8080）；Redis 已不暴露宿主端口且需密码
+- 切勿把 `.env` 提交到仓库（`.gitignore` 已忽略）；更换密钥需同步更新 `POST /api/v1/admin/register` 的请求
+
 ## 项目架构
 
     Sources/
