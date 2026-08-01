@@ -1,14 +1,34 @@
-Packages
-.build
-xcuserdata
-*.xcodeproj
-DerivedData/
+# macOS
 .DS_Store
+
+# Xcode
+xcuserdata/
+DerivedData/
+*.xcodeproj
+
+# SwiftPM
+.build/
+.swiftpm/
+Packages/
+Package.resolved
+
+# 数据库
 *.sqlite
-.swiftpm
+*.sqlite3
+*.sqlite-wal
+*.sqlite-shm
+
+# 环境与密钥
 .env
 .env.*
 !.env.example
+
+# 日志与测试产物
+*.log
 default.profraw
-.vscode/launch.json
-Package.resolved
+
+# 编辑器
+.vscode/
+
+# 开发工具
+.deepseek/
